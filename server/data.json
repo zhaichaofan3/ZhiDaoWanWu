@@ -1,0 +1,179 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "alice@example.com",
+      "name": "Alice",
+      "password_hash": "demo",
+      "created_at": "2026-03-31T09:53:47.486Z",
+      "role": "user",
+      "status": "active",
+      "nickname": "Alice",
+      "phone": "13800000001",
+      "studentId": "2021001",
+      "gender": "other",
+      "grade": "",
+      "major": "",
+      "bio": "",
+      "avatar": "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix"
+    },
+    {
+      "id": 2,
+      "email": "bob@example.com",
+      "name": "Bob",
+      "password_hash": "demo",
+      "created_at": "2026-03-31T09:53:47.487Z",
+      "role": "admin",
+      "status": "active",
+      "nickname": "Bob",
+      "phone": "13800000002",
+      "studentId": "2022002",
+      "gender": "other",
+      "grade": "",
+      "major": "",
+      "bio": "",
+      "avatar": "https://api.dicebear.com/7.x/adventurer/svg?seed=Admin"
+    },
+    {
+      "id": 3,
+      "email": "",
+      "name": "欸嘿",
+      "nickname": "欸嘿",
+      "avatar": "",
+      "phone": "15731965382",
+      "studentId": "251503",
+      "gender": "other",
+      "grade": "2022级",
+      "major": "计算机科学与技术专业",
+      "bio": "",
+      "role": "user",
+      "status": "active",
+      "password_hash": "md5:f5eb852c799d18e9d7bb4ede95dca6d7",
+      "created_at": "2026-03-31T10:50:45.459Z"
+    },
+    {
+      "id": 4,
+      "email": "",
+      "name": "jjjjj",
+      "nickname": "jjjjj",
+      "avatar": "",
+      "phone": "15731965388",
+      "studentId": "7777",
+      "gender": "other",
+      "grade": "2022级",
+      "major": "计算机科学与技术专业",
+      "bio": "",
+      "role": "user",
+      "status": "active",
+      "password_hash": "md5:f5eb852c799d18e9d7bb4ede95dca6d7",
+      "created_at": "2026-03-31T10:51:54.406Z"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "title": "二手 iPhone 13",
+      "description": "成色 9 成，64G，电池健康 88%。",
+      "price": 3200,
+      "image_url": "",
+      "owner_id": 1,
+      "status": "approved",
+      "created_at": "2026-03-31T09:53:47.487Z"
+    },
+    {
+      "id": 2,
+      "title": "机械键盘",
+      "description": "樱桃轴，几乎全新，带原包装。",
+      "price": 280,
+      "image_url": "",
+      "owner_id": 2,
+      "status": "approved",
+      "created_at": "2026-03-31T09:53:47.487Z"
+    }
+  ],
+  "favorites": [],
+  "orders": [],
+  "counters": {
+    "users": 4,
+    "products": 2,
+    "favorites": 0,
+    "orders": 0,
+    "addresses": 0
+  },
+  "addresses": [],
+  "announcements": [
+    {
+      "id": "ann_1775030658535_1",
+      "title": "🎉 平台上线公告",
+      "content": "校园二手交易平台已上线，欢迎体验！",
+      "isTop": true,
+      "status": "published",
+      "created_at": "2026-04-01T08:04:18.535Z"
+    },
+    {
+      "id": "ann_1775030658537_2",
+      "title": "⚠️ 交易安全提醒",
+      "content": "请优先选择校内当面交易，不要站外转账。",
+      "isTop": false,
+      "status": "published",
+      "created_at": "2026-04-01T08:04:18.537Z"
+    }
+  ],
+  "banners": [
+    {
+      "id": "ban_1775030658537_1",
+      "title": "毕业季闲置大甩卖",
+      "image": "https://images.unsplash.com/photo-1523050854058-8df90110c476?w=1200&h=400&fit=crop",
+      "link": "/products",
+      "sort": 1,
+      "active": true,
+      "created_at": "2026-04-01T08:04:18.537Z"
+    },
+    {
+      "id": "ban_1775030658537_2",
+      "title": "教材书籍专区",
+      "image": "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=1200&h=400&fit=crop",
+      "link": "/products",
+      "sort": 2,
+      "active": true,
+      "created_at": "2026-04-01T08:04:18.537Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "c1",
+      "name": "数码产品",
+      "parentId": null,
+      "sort": 1,
+      "enabled": true
+    },
+    {
+      "id": "c1-1",
+      "name": "手机",
+      "parentId": "c1",
+      "sort": 1,
+      "enabled": true
+    },
+    {
+      "id": "c1-2",
+      "name": "平板电脑",
+      "parentId": "c1",
+      "sort": 2,
+      "enabled": true
+    },
+    {
+      "id": "c2",
+      "name": "教材书籍",
+      "parentId": null,
+      "sort": 2,
+      "enabled": true
+    },
+    {
+      "id": "c2-1",
+      "name": "公共课教材",
+      "parentId": "c2",
+      "sort": 1,
+      "enabled": true
+    }
+  ]
+}

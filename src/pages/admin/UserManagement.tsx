@@ -1,0 +1,188 @@
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+} from "@/components/ui/dialog";
+import { Search, Ban, RotateCcw, Shield, ShieldCheck } from "lucide-react";
+import { api } from "@/lib/api";
+import { useEffect } from "react";
+
+interface MockUser {
+  id: number;
+  nickname: string;
+  avatar: string;
+  studentId: string;
+  role: "user" | "admin";
+  status: "active" | "banned";
+  createdAt: string;
+  products: number;
+  orders: number;
+}
+
+const mockUsers: MockUser[] = [
+  { id: 1, nickname: "数码小王子", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix", studentId: "2021001", role: "user", status: "active", createdAt: "2024-01-15", products: 12, orders: 8 },
+  { id: 2, nickname: "学霸菌", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Luna", studentId: "2021002", role: "user", status: "active", createdAt: "2024-01-20", products: 5, orders: 3 },
+  { id: 3, nickname: "音乐达人", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Max", studentId: "2022015", role: "admin", status: "active", createdAt: "2024-02-01", products: 8, orders: 6 },
+  { id: 4, nickname: "即将毕业", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Coco", studentId: "2020088", role: "user", status: "banned", createdAt: "2024-02-10", products: 2, orders: 1 },
+  { id: 5, nickname: "球鞋控", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mia", studentId: "2023033", role: "user", status: "active", createdAt: "2024-03-01", products: 15, orders: 10 },
+];
+
+const UserManagement = () => {
+  const [search, setSearch] = useState("");
+  const [users, setUsers] = useState<MockUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<MockUser | null>(null);
+
+  useEffect(() => {
+    api
+      .adminListUsers()
+      .then((list) => setUsers(list))
+      .catch(() => {
+        // token 无效/无权限时由路由守卫处理；这里兜底即可
+        setUsers([]);
+      });
+  }, []);
+
+  const filtered = users.filter(
+    (u) => u.nickname.includes(search) || u.studentId.includes(search)
+  );
+
+  const toggleBan = (userId: number) => {
+    const user = users.find((u) => u.id === userId);
+    if (!user) return;
+    const nextStatus: "active" | "banned" = user.status === "banned" ? "active" : "banned";
+    api.adminSetUserStatus(userId, nextStatus).then(() => {
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: nextStatus } : u)));
+    });
+  };
+
+  const toggleRole = (userId: number) => {
+    const user = users.find((u) => u.id === userId);
+    if (!user) return;
+    const nextRole: "user" | "admin" = user.role === "admin" ? "user" : "admin";
+    api.adminSetUserRole(userId, nextRole).then(() => {
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role: nextRole } : u)));
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="搜索昵称或学号..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <Badge variant="secondary">{filtered.length} 位用户</Badge>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>用户</TableHead>
+                <TableHead>学号</TableHead>
+                <TableHead>角色</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead>发布/订单</TableHead>
+                <TableHead>注册时间</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setSelectedUser(user)}>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.avatar} />
+                        <AvatarFallback>{user.nickname[0]}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm font-medium">{user.nickname}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{user.studentId}</TableCell>
+                  <TableCell>
+                    <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                      {user.role === "admin" ? "管理员" : "用户"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={user.status === "active" ? "outline" : "destructive"}>
+                      {user.status === "active" ? "正常" : "已封禁"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{user.products} / {user.orders}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{user.createdAt}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title={user.role === "admin" ? "取消管理员" : "设为管理员"} onClick={() => toggleRole(user.id)}>
+                        {user.role === "admin" ? <ShieldCheck className="h-4 w-4 text-primary" /> : <Shield className="h-4 w-4" />}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title={user.status === "banned" ? "解封" : "封禁"} onClick={() => toggleBan(user.id)}>
+                        {user.status === "banned" ? <RotateCcw className="h-4 w-4 text-success" /> : <Ban className="h-4 w-4 text-destructive" />}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* User Detail Dialog */}
+      <Dialog open={!!selectedUser} onOpenChange={() => setSelectedUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>用户详情</DialogTitle>
+            <DialogDescription>查看用户的详细信息</DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-14 w-14">
+                  <AvatarImage src={selectedUser.avatar} />
+                  <AvatarFallback>{selectedUser.nickname[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-semibold text-foreground">{selectedUser.nickname}</p>
+                  <p className="text-sm text-muted-foreground">学号：{selectedUser.studentId}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-muted-foreground">角色</p>
+                  <p className="font-medium">{selectedUser.role === "admin" ? "管理员" : "普通用户"}</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-muted-foreground">状态</p>
+                  <p className="font-medium">{selectedUser.status === "active" ? "正常" : "已封禁"}</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-muted-foreground">发布商品</p>
+                  <p className="font-medium">{selectedUser.products} 件</p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3">
+                  <p className="text-muted-foreground">交易订单</p>
+                  <p className="font-medium">{selectedUser.orders} 笔</p>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedUser(null)}>关闭</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default UserManagement;
