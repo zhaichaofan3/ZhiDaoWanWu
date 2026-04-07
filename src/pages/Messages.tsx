@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import Header from "@/features/public/components/Header";
+import Footer from "@/features/public/components/Footer";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";

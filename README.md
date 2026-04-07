@@ -12,8 +12,8 @@
 
 - `src/`：前端页面和组件
 - `src/lib/api.ts`：统一的前端 API 封装
-- `server/index.mjs`：Express 入口文件
-- `server/db.mjs`：数据库初始化与种子数据
+- `server/index.js`：Express 主入口
+- `server/src/db/`：数据库实现（MySQL / SQLite / JSON）
 - `server/data.json`：本地 JSON 数据文件（启动后自动创建）
 
 ### 安装依赖

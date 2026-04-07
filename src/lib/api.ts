@@ -32,6 +32,31 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function uploadViaBackend(file: File, folder = "products") {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("folder", folder);
+  const res = await fetch(`${API_BASE}/api/oss/upload`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+  if (!res.ok) {
+    let message = `上传失败 (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as { url: string; key: string; bucket: string };
+}
+
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
 
@@ -270,6 +295,18 @@ export const api = {
         created_at: string;
       }>;
     }>("/api/announcements").then((r) => r.list),
+
+  listBanners: () =>
+    request<{
+      list: Array<{
+        id: string;
+        title: string;
+        image: string;
+        link: string;
+        sort: number;
+        active: boolean;
+      }>;
+    }>("/api/banners").then((r) => r.list),
 
   adminListProducts: (params?: { status?: string; keyword?: string }) => {
     const q = new URLSearchParams();
@@ -524,5 +561,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // OSS 直传（S3-compatible 通用）
+  ossConfig: () =>
+    request<{
+      enabled: boolean;
+      provider: string;
+      bucket: string | null;
+      uploadExpires: number;
+    }>("/api/oss/config"),
+
+  ossPresignUpload: (data: { filename: string; contentType: string; folder?: string }) =>
+    request<{
+      uploadUrl: string;
+      method: "PUT";
+      headers?: Record<string, string>;
+      key: string;
+      bucket: string;
+      publicUrl: string | null;
+    }>("/api/oss/presign-upload", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  ossUploadFile: async (file: File, folder = "products") => {
+    return uploadViaBackend(file, folder);
+  },
 };
 

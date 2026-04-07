@@ -1,10 +1,12 @@
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import { mockProducts } from "@/data/mock";
+import Header from "@/features/public/components/Header";
+import Footer from "@/features/public/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { Edit, ArrowUpDown, Trash2, Eye, Heart, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/api";
+import { getMe } from "@/lib/auth";
 
 const statusColorMap: Record<string, string> = {
   "审核中": "bg-warning/10 text-warning border-warning/20",
@@ -15,11 +17,52 @@ const statusColorMap: Record<string, string> = {
 };
 
 const MyProducts = () => {
-  // Mock: user's own products
-  const myProducts = mockProducts.slice(0, 5).map((p, i) => ({
-    ...p,
-    status: (["已上架", "审核中", "已下架", "已驳回", "已售出"] as const)[i % 5],
-  }));
+  const [statusFilter, setStatusFilter] = useState("全部");
+  const [myProducts, setMyProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const fetchMine = async () => {
+      const me = getMe();
+      if (!me) return;
+      setLoading(true);
+      try {
+        const products = await api.listProducts();
+        const mine = products
+          .filter((p: any) => Number(p.owner_id) === Number(me.id))
+          .map((p: any) => ({
+            id: String(p.id),
+            title: p.title,
+            images: p.images || (p.image_url ? [p.image_url] : []),
+            price: Number(p.price || 0),
+            views: p.views || 0,
+            favorites: p.favorites || 0,
+            createdAt: p.created_at || "",
+            status:
+              p.status === "approved"
+                ? "已上架"
+                : p.status === "pending"
+                ? "审核中"
+                : p.status === "rejected"
+                ? "已驳回"
+                : p.status === "completed"
+                ? "已售出"
+                : "已下架",
+          }));
+        setMyProducts(mine);
+      } catch {
+        setMyProducts([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMine();
+  }, []);
+
+  const filteredProducts = useMemo(() => {
+    if (statusFilter === "全部") return myProducts;
+    return myProducts.filter((p) => p.status === statusFilter);
+  }, [myProducts, statusFilter]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -36,7 +79,13 @@ const MyProducts = () => {
           {/* Filter Tabs */}
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
             {["全部", "已上架", "审核中", "已下架", "已驳回", "已售出"].map((s) => (
-              <Button key={s} variant={s === "全部" ? "default" : "outline"} size="sm" className="shrink-0 h-7 text-xs">
+              <Button
+                key={s}
+                variant={s === statusFilter ? "default" : "outline"}
+                size="sm"
+                className="shrink-0 h-7 text-xs"
+                onClick={() => setStatusFilter(s)}
+              >
                 {s}
               </Button>
             ))}
@@ -44,7 +93,10 @@ const MyProducts = () => {
 
           {/* Product List */}
           <div className="space-y-3">
-            {myProducts.map((product) => (
+            {loading ? (
+              <div className="text-center py-16 text-muted-foreground">加载中...</div>
+            ) : (
+              filteredProducts.map((product) => (
               <div key={product.id} className="rounded-lg border border-border bg-card p-4 flex gap-4">
                 <Link to={`/product/${product.id}`} className="shrink-0">
                   <img src={product.images[0]} alt="" className="h-20 w-20 rounded-md object-cover" />
@@ -79,7 +131,8 @@ const MyProducts = () => {
                   </Button>
                 </div>
               </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </main>

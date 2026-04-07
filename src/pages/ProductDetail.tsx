@@ -1,5 +1,5 @@
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import Header from "@/features/public/components/Header";
+import Footer from "@/features/public/components/Footer";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Heart, MessageCircle, ShoppingCart, ChevronLeft, Eye, MapPin, Clock, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -109,8 +109,35 @@ const ProductDetail = () => {
       alert("请先登录");
       return;
     }
-    // 这里应该跳转到订单创建页面
-    alert("跳转到订单创建页面");
+
+    api
+      .listAddresses()
+      .then(async (addresses) => {
+        const defaultAddress = addresses.find((a: any) => a.isDefault) || addresses[0];
+        if (!defaultAddress) {
+          alert("请先新增收货地址");
+          navigate("/addresses");
+          return;
+        }
+
+        const deliveryAddress = `${defaultAddress.campus} ${defaultAddress.building} ${defaultAddress.detail}`;
+        const deliveryTime = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const order = await api.createOrder({
+          product_id: Number(product.id),
+          deliveryAddress,
+          deliveryTime,
+        });
+
+        const orderId = (order as any)?.id;
+        if (orderId) {
+          navigate(`/order/${orderId}`);
+        } else {
+          navigate("/orders");
+        }
+      })
+      .catch((e: any) => {
+        alert(e?.message || "下单失败，请重试");
+      });
   };
 
   return (

@@ -1,0 +1,108 @@
+import { buildUserService } from "../services/user-service.js";
+
+export function buildUserController(deps) {
+  const service = buildUserService(deps);
+
+  const send = (res, result) => {
+    if (result.status === 204) return res.status(204).send();
+    return res.status(result.status).json(result.body ?? {});
+  };
+
+  return {
+    async updateProfile(req, res) {
+      try {
+        return send(res, await service.updateProfile(req.auth.uid, req.body ?? {}));
+      } catch (error) {
+        console.error("更新用户信息失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async updatePassword(req, res) {
+      try {
+        const { oldPassword, newPassword } = req.body ?? {};
+        return send(res, await service.updatePassword(req.auth.uid, oldPassword, newPassword));
+      } catch (error) {
+        console.error("更新密码失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async listAddresses(req, res) {
+      try {
+        return res.json(await service.listAddresses(req.auth.uid));
+      } catch (error) {
+        console.error("获取地址列表失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async createAddress(req, res) {
+      try {
+        return send(res, await service.createAddress(req.auth.uid, req.body ?? {}));
+      } catch (error) {
+        console.error("创建地址失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async deleteAddress(req, res) {
+      try {
+        return send(res, await service.deleteAddress(req.auth.uid, Number(req.params.id)));
+      } catch (error) {
+        console.error("删除地址失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async setDefaultAddress(req, res) {
+      try {
+        return send(res, await service.setDefaultAddress(req.auth.uid, Number(req.params.id)));
+      } catch (error) {
+        console.error("设置默认地址失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async listNotifications(req, res) {
+      try {
+        return res.json(await service.listNotifications(req.auth.uid));
+      } catch (error) {
+        console.error("获取通知列表失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async readNotification(req, res) {
+      try {
+        return send(res, await service.readNotification(req.auth.uid, req.params.id));
+      } catch (error) {
+        console.error("标记通知已读失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async readAllNotifications(req, res) {
+      try {
+        return send(res, await service.readAllNotifications(req.auth.uid));
+      } catch (error) {
+        console.error("全部标记通知已读失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    listConversations(_req, res) {
+      return res.json(service.listConversations());
+    },
+
+    listMessages(req, res) {
+      return res.json(service.listMessages(req.auth.uid));
+    },
+
+    sendMessage(req, res) {
+      const { content, type } = req.body ?? {};
+      return send(res, service.sendMessage(req.auth.uid, content, type));
+    },
+  };
+}
+

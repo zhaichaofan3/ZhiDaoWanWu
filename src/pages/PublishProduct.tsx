@@ -1,12 +1,12 @@
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import Header from "@/features/public/components/Header";
+import Footer from "@/features/public/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, X, ImagePlus, Brain, Sparkles } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
@@ -24,7 +24,9 @@ const PublishProduct = () => {
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // AI 帮写相关状态
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
@@ -45,14 +47,29 @@ const PublishProduct = () => {
       .catch(() => setCategories([]));
   }, []);
 
-  const addMockImage = () => {
-    if (images.length >= 9) return;
-    const mockImgs = [
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&h=200&fit=crop",
-      "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=200&h=200&fit=crop",
-      "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=200&h=200&fit=crop",
-    ];
-    setImages([...images, mockImgs[images.length % mockImgs.length]]);
+  const addImageByUpload = () => {
+    if (images.length >= 9 || uploadingImage) return;
+    fileInputRef.current?.click();
+  };
+
+  const onFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (images.length >= 9) {
+      e.target.value = "";
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const { url } = await api.ossUploadFile(file, "products");
+      setImages((prev) => [...prev, url].slice(0, 9));
+    } catch (error) {
+      console.error("图片上传失败:", error);
+      alert("图片上传失败，请检查 OSS 配置后重试");
+    } finally {
+      setUploadingImage(false);
+      e.target.value = "";
+    }
   };
 
   // 实际 API 调用：AI 生成商品介绍和价格估计
@@ -162,14 +179,22 @@ const PublishProduct = () => {
                 ))}
                 {images.length < 9 && (
                   <button
-                    onClick={addMockImage}
+                    onClick={addImageByUpload}
                     className="aspect-square rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                    disabled={uploadingImage}
                   >
                     <ImagePlus className="h-6 w-6" />
-                    <span className="text-xs">{images.length}/9</span>
+                    <span className="text-xs">{uploadingImage ? "上传中..." : `${images.length}/9`}</span>
                   </button>
                 )}
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={onFileChange}
+              />
             </div>
 
             {/* Title */}

@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Send, Image, MoreVertical } from "lucide-react";
 import { api } from "@/lib/api";
-import { getMe } from "@/lib/auth";
 
 interface ChatMessage {
   id: string;
@@ -53,23 +52,9 @@ const Chat = () => {
       
       setLoading(true);
       try {
-        // 获取会话信息（这里简化处理，使用模拟数据）
-        const mockConversation: Conversation = {
-          id: id,
-          contact: {
-            id: 1,
-            nickname: "数码小王子",
-            avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix"
-          },
-          lastMessage: "iPad还在吗？可以便宜点吗",
-          lastTime: "10:30",
-          unreadCount: 0,
-          productTitle: "iPad Air 5 256G 星光色 99新",
-          productPrice: 2800,
-          productImage: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=100&h=100&fit=crop",
-          productId: "1"
-        };
-        setConversation(mockConversation);
+        const convRes = await api.getMessages();
+        const currentConv = convRes.conversations.find((c) => c.id === id) || null;
+        setConversation(currentConv);
         
         // 获取聊天消息
         const response = await api.getChatMessages(id);
@@ -105,17 +90,6 @@ const Chat = () => {
       setInputValue("");
     } catch (error) {
       console.error("发送消息失败", error);
-      // 发送失败时，本地添加消息
-      const newMsg: ChatMessage = {
-        id: Date.now().toString(),
-        senderId: getMe()?.id?.toString() || "me",
-        content: inputValue.trim(),
-        type: "text",
-        time: "刚刚",
-        isMe: true,
-      };
-      setMessages((prev) => [...prev, newMsg]);
-      setInputValue("");
     } finally {
       setSending(false);
     }

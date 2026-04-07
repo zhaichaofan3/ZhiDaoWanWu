@@ -38,4 +38,4 @@ COPY --from=frontend /app/dist/ ./dist/
 EXPOSE 4000
 
 # 启动应用
-CMD ["node", "server/index.mjs"]
+CMD ["node", "server/index.js"]

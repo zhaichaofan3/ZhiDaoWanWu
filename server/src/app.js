@@ -1,14 +1,22 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { mysqlDb } from "./db-mysql.mjs";
-import { jsonDb, seedIfEmpty } from "./db.mjs";
+import { mysqlDb, sqliteDb, jsonDb, seedIfEmpty } from "./db/index.js";
 import crypto from "node:crypto";
 import axios from "axios";
 import WebSocket from "ws";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import multer from "multer";
+import { createAuthRouter } from "./routes/auth-routes.js";
+import { createPublicRouter } from "./routes/public-routes.js";
+import { createProductRouter } from "./routes/product-routes.js";
+import { createUserRouter } from "./routes/user-routes.js";
+import { createTradeRouter } from "./routes/trade-routes.js";
 
 // 数据库连接状态
-let db = createJsonDbAdapter(jsonDb);
-let useJsonDb = true;
+let db = mysqlDb;
+let useJsonDb = false;
 
 // JSON 数据库适配器
 function createJsonDbAdapter(jsonDb) {
@@ -203,14 +211,42 @@ function createJsonDbAdapter(jsonDb) {
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-const TOKEN_SECRET = process.env.TOKEN_SECRET || "dev-token-secret";
-const PASSWORD_SALT = "secondhand-salt";
+const TOKEN_SECRET = process.env.TOKEN_SECRET;
+const PASSWORD_SALT = process.env.PASSWORD_SALT;
+if (!TOKEN_SECRET || !PASSWORD_SALT) {
+  throw new Error("Missing required env vars: TOKEN_SECRET and PASSWORD_SALT");
+}
 
 // 科大讯飞星火认知大模型 API 配置
-const xfAppId = process.env.XF_APP_ID || "0d4d6665"; // 在生产环境中使用环境变量
-const xfApiKey = process.env.XF_API_KEY || "b960c3b5394eda772a32af8e798be408"; // 在生产环境中使用环境变量
-const xfApiSecret = process.env.XF_API_SECRET || "YTJlYmIzMjU4Y2NmNTQzYTc4M2E3Mzg2"; // 在生产环境中使用环境变量
+const xfAppId = process.env.XF_APP_ID || "";
+const xfApiKey = process.env.XF_API_KEY || "";
+const xfApiSecret = process.env.XF_API_SECRET || "";
 const xfWsUrl = "wss://spark-api.xf-yun.com/v4.0/chat";
+
+// S3 协议 OSS 配置（兼容 MinIO / 阿里云 OSS S3 兼容 / 腾讯云 COS S3 兼容 / Ceph 等）
+const OSS_PROVIDER = process.env.OSS_PROVIDER || "s3-compatible";
+const OSS_ACCESS_KEY_ID = process.env.OSS_ACCESS_KEY_ID || "";
+const OSS_SECRET_ACCESS_KEY = process.env.OSS_SECRET_ACCESS_KEY || "";
+const OSS_BUCKET = process.env.OSS_BUCKET || "";
+const OSS_REGION = process.env.OSS_REGION || "us-east-1";
+const OSS_ENDPOINT = process.env.OSS_ENDPOINT || process.env.OSS_EXTERNAL_ENDPOINT || "";
+const OSS_PUBLIC_BASE_URL = process.env.OSS_PUBLIC_BASE_URL || process.env.OSS_EXTERNAL_ENDPOINT || "";
+const OSS_FORCE_PATH_STYLE = String(process.env.OSS_FORCE_PATH_STYLE || "true").toLowerCase() !== "false";
+const OSS_UPLOAD_EXPIRES = Number(process.env.OSS_UPLOAD_EXPIRES || 600);
+
+const ossReady = Boolean(OSS_ACCESS_KEY_ID && OSS_SECRET_ACCESS_KEY && OSS_BUCKET && OSS_ENDPOINT);
+const s3Client = ossReady
+  ? new S3Client({
+      region: OSS_REGION,
+      endpoint: OSS_ENDPOINT,
+      forcePathStyle: OSS_FORCE_PATH_STYLE,
+      credentials: {
+        accessKeyId: OSS_ACCESS_KEY_ID,
+        secretAccessKey: OSS_SECRET_ACCESS_KEY,
+      },
+    })
+  : null;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 function base64UrlEncode(str) {
   return Buffer.from(str)
@@ -299,1106 +335,164 @@ function adminRequired(req, res, next) {
 
 app.use(cors());
 app.use(express.json());
+app.use(
+  "/api/auth",
+  createAuthRouter({
+    db,
+    createToken,
+    hashPasswordMD5,
+    authRequired,
+  })
+);
+app.use(
+  "/api",
+  createProductRouter({
+    db,
+    authRequired,
+  })
+);
+app.use(
+  "/api",
+  createUserRouter({
+    db,
+    hashPasswordMD5,
+    authRequired,
+  })
+);
+app.use(
+  "/api",
+  createTradeRouter({
+    db,
+    authRequired,
+  })
+);
+app.use("/api", createPublicRouter({ db }));
+
+app.get("/api/oss/config", authRequired, (_req, res) => {
+  res.json({
+    enabled: ossReady,
+    provider: OSS_PROVIDER,
+    bucket: OSS_BUCKET || null,
+    uploadExpires: OSS_UPLOAD_EXPIRES,
+  });
+});
+
+app.post("/api/oss/presign-upload", authRequired, async (req, res) => {
+  if (!ossReady || !s3Client) {
+    return res.status(400).json({ message: "OSS 未配置完整" });
+  }
+
+  try {
+    const { filename, contentType, folder } = req.body ?? {};
+    if (!filename || !contentType) {
+      return res.status(400).json({ message: "filename 和 contentType 为必填" });
+    }
+
+    const safeFolder = String(folder || "uploads")
+      .replace(/^\/*/, "")
+      .replace(/\/*$/, "")
+      .replace(/\.\./g, "");
+    const ext = String(filename).includes(".") ? String(filename).split(".").pop() : "";
+    const key = `${safeFolder}/${new Date().toISOString().slice(0, 10)}/${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext ? `.${ext}` : ""}`;
+
+    const command = new PutObjectCommand({
+      Bucket: OSS_BUCKET,
+      Key: key,
+      ContentType: String(contentType),
+    });
+    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: OSS_UPLOAD_EXPIRES });
+
+    const publicBase = String(OSS_PUBLIC_BASE_URL || "").replace(/\/$/, "");
+    const publicUrl = publicBase ? `${publicBase}/${OSS_BUCKET}/${key}` : null;
+
+    res.json({
+      uploadUrl,
+      method: "PUT",
+      headers: { "Content-Type": String(contentType) },
+      key,
+      bucket: OSS_BUCKET,
+      publicUrl,
+    });
+  } catch (error) {
+    console.error("生成 OSS 上传签名失败:", error);
+    return res.status(500).json({ message: "生成上传签名失败" });
+  }
+});
+
+app.post("/api/oss/upload", authRequired, upload.single("file"), async (req, res) => {
+  if (!ossReady || !s3Client) {
+    return res.status(400).json({ message: "OSS 未配置完整" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ message: "file 为必填" });
+  }
+
+  try {
+    const folder = String(req.body?.folder || "uploads")
+      .replace(/^\/*/, "")
+      .replace(/\/*$/, "")
+      .replace(/\.\./g, "");
+    const originalName = req.file.originalname || "upload.bin";
+    const ext = originalName.includes(".") ? originalName.split(".").pop() : "";
+    const key = `${folder}/${new Date().toISOString().slice(0, 10)}/${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext ? `.${ext}` : ""}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: OSS_BUCKET,
+        Key: key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype || "application/octet-stream",
+      })
+    );
+
+    const base = `${req.protocol}://${req.get("host")}`;
+    const url = `${base}/api/oss/object?key=${encodeURIComponent(key)}`;
+    res.json({ key, bucket: OSS_BUCKET, url });
+  } catch (error) {
+    console.error("后端代理上传 OSS 失败:", error);
+    return res.status(500).json({ message: "后端代理上传失败" });
+  }
+});
+
+app.get("/api/oss/object", async (req, res) => {
+  if (!ossReady || !s3Client) {
+    return res.status(400).json({ message: "OSS 未配置完整" });
+  }
+
+  const key = String(req.query?.key || "");
+  if (!key) {
+    return res.status(400).json({ message: "key 为必填" });
+  }
+
+  try {
+    const result = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: OSS_BUCKET,
+        Key: key,
+      })
+    );
+    if (result.ContentType) res.setHeader("Content-Type", result.ContentType);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    if (result.Body && typeof result.Body.pipe === "function") {
+      result.Body.pipe(res);
+    } else {
+      res.status(500).json({ message: "读取对象失败" });
+    }
+  } catch (error) {
+    console.error("读取 OSS 对象失败:", error);
+    return res.status(404).json({ message: "图片不存在或无权限访问" });
+  }
+});
 
 // 初始化数据库
 db.initDatabase();
 
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
 
-app.post("/api/auth/login", (req, res) => {
-  const { account, email, studentId, password } = req.body ?? {};
-  const loginKey = account || email || studentId;
-  if (!loginKey || !password) {
-    return res.status(400).json({ message: "account(或email/学号) 和 password 为必填" });
-  }
 
-  // 从数据库获取用户信息
-  let sql, params;
-  if (loginKey.includes("@")) {
-    sql = "SELECT * FROM users WHERE email = ?";
-    params = [loginKey];
-  } else {
-    sql = "SELECT * FROM users WHERE studentId = ? OR phone = ?";
-    params = [loginKey, loginKey];
-  }
 
-  db.query(sql, params).then((users) => {
-    const user = users[0];
-    if (!user) return res.status(401).json({ message: "账号或密码不正确" });
-    if (user.status === "banned") return res.status(403).json({ message: "账号已封禁" });
 
-    const ok = user.password_hash === "demo" || user.password_hash === password || user.password_hash === hashPasswordMD5(password);
 
-    if (!ok) return res.status(401).json({ message: "账号或密码不正确" });
 
-    const token = createToken({ uid: user.id, role: user.role });
-    res.json({
-      user: { id: user.id, nickname: user.nickname, role: user.role, studentId: user.studentId },
-      token,
-    });
-  }).catch((error) => {
-    console.error('登录失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.post("/api/auth/register", (req, res) => {
-  const {
-    nickname,
-    studentId,
-    phone,
-    password,
-    gender,
-    grade,
-    major,
-    bio,
-    avatar,
-  } = req.body ?? {};
-
-  if (!nickname || !studentId || !password) {
-    return res.status(400).json({ message: "nickname、studentId 和 password 为必填" });
-  }
-
-  // 检查学号或手机号是否已存在
-  let checkSql, checkParams;
-  if (phone) {
-    checkSql = "SELECT * FROM users WHERE studentId = ? OR phone = ?";
-    checkParams = [studentId, phone];
-  } else {
-    checkSql = "SELECT * FROM users WHERE studentId = ?";
-    checkParams = [studentId];
-  }
-
-  db.query(checkSql, checkParams).then((users) => {
-    if (users.length > 0) {
-      return res.status(409).json({ message: "学号或手机号已存在" });
-    }
-
-    // 创建新用户
-    const userData = {
-      email: "",
-      name: nickname,
-      nickname,
-      avatar: avatar || "",
-      phone: phone || "",
-      studentId,
-      gender: gender || "other",
-      grade: grade || "",
-      major: major || "",
-      bio: bio || "",
-      role: "user",
-      status: "active",
-      password_hash: hashPasswordMD5(password),
-      created_at: new Date().toISOString(),
-    };
-
-    return db.insert('users', userData);
-  }).then((userId) => {
-    const token = createToken({ uid: userId, role: "user" });
-    res.status(201).json({
-      user: { id: userId, nickname, role: "user", studentId },
-      token,
-    });
-  }).catch((error) => {
-    console.error('注册失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/auth/me", authRequired, (req, res) => {
-  const u = req.auth.user;
-  res.json({
-    user: {
-      id: u.id,
-      nickname: u.nickname,
-      avatar: u.avatar,
-      phone: u.phone,
-      studentId: u.studentId,
-      gender: u.gender,
-      grade: u.grade,
-      major: u.major,
-      bio: u.bio,
-      role: u.role,
-    },
-  });
-});
-
-app.get("/api/products", (_req, res) => {
-  // 从数据库获取商品列表
-  const sql = `
-    SELECT p.*, u.name as owner_name
-    FROM products p
-    LEFT JOIN users u ON p.owner_id = u.id
-    WHERE p.status <> 'deleted'
-    ORDER BY p.created_at DESC
-  `;
-
-  db.query(sql).then((products) => {
-    res.json(products);
-  }).catch((error) => {
-    console.error('获取商品列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/products/:id", (req, res) => {
-  const id = Number(req.params.id);
-  
-  // 从数据库获取商品详情
-  const sql = `
-    SELECT p.*, u.name as owner_name
-    FROM products p
-    LEFT JOIN users u ON p.owner_id = u.id
-    WHERE p.id = ?
-  `;
-
-  db.query(sql, [id]).then((products) => {
-    const product = products[0];
-    if (!product) {
-      return res.status(404).json({ message: "商品不存在" });
-    }
-    res.json(product);
-  }).catch((error) => {
-    console.error('获取商品详情失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.post("/api/products", authRequired, (req, res) => {
-  const { title, description, price, image_url, condition, category_id, campus } = req.body ?? {};
-  if (!title || price == null || !condition || !category_id || !campus) {
-    return res.status(400).json({ message: "title, price, condition, category_id, campus 为必填" });
-  }
-
-  // 创建商品
-  const productData = {
-    title,
-    description: description ?? "",
-    price,
-    image_url: image_url ?? "",
-    images: image_url ? JSON.stringify([image_url]) : null,
-    condition,
-    category_id,
-    campus,
-    owner_id: req.auth.uid,
-    status: "pending", // 待审核
-    created_at: new Date().toISOString(),
-    views: 0,
-    favorites: 0,
-  };
-
-  db.insert('products', productData).then((productId) => {
-    const product = {
-      ...productData,
-      id: productId,
-    };
-    res.status(201).json(product);
-  }).catch((error) => {
-    console.error('创建商品失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.put("/api/products/:id", authRequired, (req, res) => {
-  const id = Number(req.params.id);
-  const { title, description, price, image_url, condition, category_id, campus } = req.body ?? {};
-  
-  // 从数据库获取商品信息
-  db.getById('products', id).then((product) => {
-    if (!product) {
-      return res.status(404).json({ message: "商品不存在" });
-    }
-    
-    if (product.owner_id !== req.auth.uid) {
-      return res.status(403).json({ message: "无权限修改此商品" });
-    }
-    
-    if (product.status === "approved" || product.status === "pending") {
-      return res.status(400).json({ message: "仅可编辑审核驳回、已下架的商品" });
-    }
-    
-    // 更新商品信息
-    const updateData = {};
-    if (title != null) updateData.title = title;
-    if (description != null) updateData.description = description;
-    if (price != null) updateData.price = price;
-    if (image_url != null) {
-      updateData.image_url = image_url;
-      updateData.images = JSON.stringify([image_url]);
-    }
-    if (condition != null) updateData.condition = condition;
-    if (category_id != null) updateData.category_id = category_id;
-    if (campus != null) updateData.campus = campus;
-    updateData.status = "pending"; // 重新进入审核流程
-    updateData.updated_at = new Date().toISOString();
-    
-    return db.update('products', id, updateData);
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('更新商品失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.patch("/api/products/:id/status", authRequired, (req, res) => {
-  const id = Number(req.params.id);
-  const { status } = req.body ?? {};
-  
-  // 从数据库获取商品信息
-  db.getById('products', id).then((product) => {
-    if (!product) {
-      return res.status(404).json({ message: "商品不存在" });
-    }
-    
-    if (product.owner_id !== req.auth.uid) {
-      return res.status(403).json({ message: "无权限修改此商品" });
-    }
-    
-    if (status === "up" && (product.status === "approved" || product.status === "pending")) {
-      // 更新商品状态
-      return db.update('products', id, {
-        status: "approved",
-        updated_at: new Date().toISOString(),
-      });
-    } else if (status === "down" && product.status === "approved") {
-      // 检查是否有进行中的订单
-      const checkSql = "SELECT * FROM orders WHERE product_id = ? AND status NOT IN ('completed', 'cancelled')";
-      return db.query(checkSql, [id]).then((orders) => {
-        if (orders.length > 0) {
-          return res.status(400).json({ message: "有进行中订单的商品不可下架" });
-        }
-        // 更新商品状态
-        return db.update('products', id, {
-          status: "down",
-          updated_at: new Date().toISOString(),
-        });
-      });
-    } else {
-      return res.status(400).json({ message: "无效的状态变更" });
-    }
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('更新商品状态失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.delete("/api/products/:id", authRequired, (req, res) => {
-  const id = Number(req.params.id);
-  
-  // 从数据库获取商品信息
-  db.getById('products', id).then((product) => {
-    if (!product) {
-      return res.status(404).json({ message: "商品不存在" });
-    }
-    
-    if (product.owner_id !== req.auth.uid) {
-      return res.status(403).json({ message: "无权限删除此商品" });
-    }
-    
-    if (product.status === "approved" || product.status === "pending") {
-      return res.status(400).json({ message: "仅可删除已下架、审核驳回的商品" });
-    }
-    
-    // 检查是否有进行中的订单
-    const checkSql = "SELECT * FROM orders WHERE product_id = ? AND status NOT IN ('completed', 'cancelled')";
-    return db.query(checkSql, [id]).then((orders) => {
-      if (orders.length > 0) {
-        return res.status(400).json({ message: "有进行中订单的商品不可删除" });
-      }
-      
-      // 删除相关的收藏
-      const deleteFavoritesSql = "DELETE FROM favorites WHERE product_id = ?";
-      return db.query(deleteFavoritesSql, [id]).then(() => {
-        // 删除商品
-        return db.delete('products', id);
-      });
-    });
-  }).then(() => {
-    res.status(204).send();
-  }).catch((error) => {
-    console.error('删除商品失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/users/:userId/favorites", (req, res) => {
-  const userId = Number(req.params.userId);
-  
-  // 从数据库获取收藏列表
-  const sql = `
-    SELECT f.id, f.created_at, f.product_id, p.title, p.price, p.image_url
-    FROM favorites f
-    LEFT JOIN products p ON f.product_id = p.id
-    WHERE f.user_id = ?
-    ORDER BY f.created_at DESC
-  `;
-
-  db.query(sql, [userId]).then((favorites) => {
-    res.json(favorites);
-  }).catch((error) => {
-    console.error('获取收藏列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.post("/api/users/:userId/favorites", (req, res) => {
-  const userId = Number(req.params.userId);
-  const { product_id } = req.body ?? {};
-
-  if (!product_id) {
-    return res.status(400).json({ message: "product_id 为必填" });
-  }
-
-  // 检查是否已经收藏
-  const checkSql = "SELECT * FROM favorites WHERE user_id = ? AND product_id = ?";
-  db.query(checkSql, [userId, product_id]).then((favorites) => {
-    if (favorites.length === 0) {
-      // 创建收藏
-      const favoriteData = {
-        user_id: userId,
-        product_id,
-        created_at: new Date().toISOString(),
-      };
-      return db.insert('favorites', favoriteData);
-    }
-    return null;
-  }).then(() => {
-    res.status(201).json({ message: "ok" });
-  }).catch((error) => {
-    console.error('创建收藏失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.delete("/api/users/:userId/favorites/:productId", (req, res) => {
-  const userId = Number(req.params.userId);
-  const productId = Number(req.params.productId);
-  
-  // 删除收藏
-  const deleteSql = "DELETE FROM favorites WHERE user_id = ? AND product_id = ?";
-  db.query(deleteSql, [userId, productId]).then(() => {
-    res.status(204).send();
-  }).catch((error) => {
-    console.error('删除收藏失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.put("/api/users/me/profile", authRequired, (req, res) => {
-  const meId = req.auth.uid;
-  const body = req.body ?? {};
-  const fields = {
-    nickname: body.nickname,
-    avatar: body.avatar,
-    gender: body.gender,
-    grade: body.grade,
-    major: body.major,
-    bio: body.bio,
-  };
-
-  if (!fields.nickname || !String(fields.nickname).trim()) {
-    return res.status(400).json({ message: "nickname 为必填" });
-  }
-
-  // 检查昵称是否已存在
-  const checkSql = "SELECT * FROM users WHERE nickname = ? AND id != ?";
-  db.query(checkSql, [fields.nickname, meId]).then((users) => {
-    if (users.length > 0) {
-      return res.status(409).json({ message: "昵称已存在" });
-    }
-
-    // 更新用户信息
-    return db.update('users', meId, fields);
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('更新用户信息失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.put("/api/users/me/password", authRequired, (req, res) => {
-  const { oldPassword, newPassword } = req.body ?? {};
-  if (!oldPassword || !newPassword) return res.status(400).json({ message: "oldPassword 和 newPassword 为必填" });
-  if (oldPassword === newPassword) return res.status(400).json({ message: "新密码不能与旧密码相同" });
-
-  const meId = req.auth.uid;
-  
-  // 从数据库获取用户信息
-  db.getById('users', meId).then((user) => {
-    if (!user) return res.status(404).json({ message: "用户不存在" });
-
-    const ok = user.password_hash === "demo" || user.password_hash === oldPassword || user.password_hash === hashPasswordMD5(oldPassword);
-    if (!ok) return res.status(401).json({ message: "旧密码不正确" });
-
-    // 更新密码
-    return db.update('users', meId, {
-      password_hash: hashPasswordMD5(newPassword),
-    });
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('更新密码失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-// 地址：先做基础版（增删改/默认地址）
-app.get("/api/users/me/addresses", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  
-  // 从数据库获取地址列表
-  const sql = `
-    SELECT * FROM addresses
-    WHERE user_id = ?
-    ORDER BY isDefault DESC, created_at DESC
-  `;
-
-  db.query(sql, [userId]).then((addresses) => {
-    res.json({ list: addresses });
-  }).catch((error) => {
-    console.error('获取地址列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.post("/api/users/me/addresses", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  const { contact, phone, campus, building, detail, isDefault } = req.body ?? {};
-  
-  if (!contact || !phone || !campus || !building || !detail) {
-    return res.status(400).json({ message: "contact、phone、campus、building、detail 为必填" });
-  }
-  
-  // 检查地址数量
-  const countSql = "SELECT COUNT(*) as count FROM addresses WHERE user_id = ?";
-  db.query(countSql, [userId]).then((result) => {
-    if (result[0].count >= 10) {
-      return res.status(400).json({ message: "最多保存 10 个收货地址" });
-    }
-    
-    // 如果是默认地址，先将其他地址设置为非默认
-    if (isDefault) {
-      const updateSql = "UPDATE addresses SET isDefault = false WHERE user_id = ?";
-      return db.query(updateSql, [userId]).then(() => true);
-    }
-    return true;
-  }).then(() => {
-    // 创建地址
-    const addressData = {
-      user_id: userId,
-      contact,
-      phone,
-      campus,
-      building,
-      detail,
-      isDefault: Boolean(isDefault),
-      created_at: new Date().toISOString(),
-    };
-    return db.insert('addresses', addressData);
-  }).then((addressId) => {
-    const address = {
-      id: addressId,
-      user_id: userId,
-      contact,
-      phone,
-      campus,
-      building,
-      detail,
-      isDefault: Boolean(isDefault),
-      created_at: new Date().toISOString(),
-    };
-    res.status(201).json({ message: "ok", address });
-  }).catch((error) => {
-    console.error('创建地址失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.delete("/api/users/me/addresses/:id", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  const addressId = Number(req.params.id);
-  
-  // 删除地址
-  const deleteSql = "DELETE FROM addresses WHERE user_id = ? AND id = ?";
-  db.query(deleteSql, [userId, addressId]).then(() => {
-    res.status(204).send();
-  }).catch((error) => {
-    console.error('删除地址失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.patch("/api/users/me/addresses/:id/default", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  const addressId = Number(req.params.id);
-  
-  // 检查地址是否存在
-  db.getById('addresses', addressId).then((address) => {
-    if (!address || address.user_id !== userId) {
-      return res.status(404).json({ message: "地址不存在" });
-    }
-    
-    // 将所有地址设置为非默认
-    const updateSql1 = "UPDATE addresses SET isDefault = false WHERE user_id = ?";
-    return db.query(updateSql1, [userId]).then(() => {
-      // 将指定地址设置为默认
-      const updateSql2 = "UPDATE addresses SET isDefault = true WHERE id = ?";
-      return db.query(updateSql2, [addressId]);
-    });
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('设置默认地址失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-// --- Public: 公告/轮播图/分类（给前台使用） ---
-app.get("/api/announcements", (_req, res) => {
-  // 从数据库获取公告列表
-  const sql = `
-    SELECT * FROM announcements
-    WHERE status = 'published'
-    ORDER BY isTop DESC, created_at DESC
-  `;
-
-  db.query(sql).then((announcements) => {
-    res.json({ list: announcements });
-  }).catch((error) => {
-    console.error('获取公告列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/banners", (_req, res) => {
-  // 从数据库获取轮播图列表
-  const sql = `
-    SELECT * FROM banners
-    WHERE active = true
-    ORDER BY sort ASC
-  `;
-
-  db.query(sql).then((banners) => {
-    res.json({ list: banners });
-  }).catch((error) => {
-    console.error('获取轮播图列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/categories", (_req, res) => {
-  // 从数据库获取分类列表
-  const sql = `
-    SELECT * FROM categories
-    WHERE enabled = true
-    ORDER BY sort ASC
-  `;
-
-  db.query(sql).then((categories) => {
-    res.json({ list: categories });
-  }).catch((error) => {
-    console.error('获取分类列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.post("/api/orders", authRequired, (req, res) => {
-  const { product_id, deliveryAddress, deliveryTime } = req.body ?? {};
-  if (!product_id || !deliveryAddress || !deliveryTime) {
-    return res.status(400).json({ message: "product_id, deliveryAddress, deliveryTime 为必填" });
-  }
-
-  const buyerId = req.auth.uid;
-  
-  // 从数据库获取商品信息
-  db.getById('products', product_id).then((product) => {
-    if (!product) {
-      return res.status(404).json({ message: "商品不存在" });
-    }
-    
-    if (product.status !== "approved") {
-      return res.status(400).json({ message: "商品不可购买" });
-    }
-    
-    if (product.owner_id === buyerId) {
-      return res.status(400).json({ message: "不能购买自己的商品" });
-    }
-    
-    // 检查是否已有进行中的订单
-    const checkSql = "SELECT * FROM orders WHERE product_id = ? AND status NOT IN ('completed', 'cancelled')";
-    return db.query(checkSql, [product_id]).then((orders) => {
-      if (orders.length > 0) {
-        return res.status(400).json({ message: "商品已被下单" });
-      }
-      
-      // 生成订单号
-      const orderNo = `TX${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${String(Date.now()).slice(-3).padStart(3, "0")}`;
-      
-      // 创建订单
-      const orderData = {
-        orderNo,
-        buyer_id: buyerId,
-        seller_id: product.owner_id,
-        product_id,
-        status: "pending",
-        amount: product.price,
-        deliveryAddress,
-        deliveryTime,
-        timeline: JSON.stringify([{
-          content: "订单创建成功",
-          time: new Date().toISOString()
-        }]),
-        created_at: new Date().toISOString(),
-      };
-      
-      return db.insert('orders', orderData);
-    });
-  }).then((orderId) => {
-    // 获取创建的订单
-    return db.getById('orders', orderId);
-  }).then((order) => {
-    res.status(201).json(order);
-  }).catch((error) => {
-    console.error('创建订单失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/users/me/orders", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  
-  // 获取买家订单
-  const buyerSql = `
-    SELECT o.*, p.title, p.price, p.image_url, u.id as seller_id, u.nickname as seller_nickname, u.avatar as seller_avatar
-    FROM orders o
-    LEFT JOIN products p ON o.product_id = p.id
-    LEFT JOIN users u ON o.seller_id = u.id
-    WHERE o.buyer_id = ?
-  `;
-  
-  // 获取卖家订单
-  const sellerSql = `
-    SELECT o.*, p.title, p.price, p.image_url, u.id as buyer_id, u.nickname as buyer_nickname, u.avatar as buyer_avatar
-    FROM orders o
-    LEFT JOIN products p ON o.product_id = p.id
-    LEFT JOIN users u ON o.buyer_id = u.id
-    WHERE o.seller_id = ?
-  `;
-  
-  Promise.all([
-    db.query(buyerSql, [userId]),
-    db.query(sellerSql, [userId])
-  ]).then(([buyerOrders, sellerOrders]) => {
-    // 处理买家订单
-    const formattedBuyerOrders = buyerOrders.map((order) => ({
-      ...order,
-      product: {
-        id: order.product_id,
-        title: order.title,
-        price: order.price,
-        image_url: order.image_url
-      },
-      seller: {
-        id: order.seller_id,
-        nickname: order.seller_nickname,
-        avatar: order.seller_avatar
-      }
-    }));
-    
-    // 处理卖家订单
-    const formattedSellerOrders = sellerOrders.map((order) => ({
-      ...order,
-      product: {
-        id: order.product_id,
-        title: order.title,
-        price: order.price,
-        image_url: order.image_url
-      },
-      buyer: {
-        id: order.buyer_id,
-        nickname: order.buyer_nickname,
-        avatar: order.buyer_avatar
-      }
-    }));
-    
-    res.json({ buyerOrders: formattedBuyerOrders, sellerOrders: formattedSellerOrders });
-  }).catch((error) => {
-    console.error('获取订单列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.get("/api/orders/:id", authRequired, (req, res) => {
-  const id = Number(req.params.id);
-  const userId = req.auth.uid;
-  
-  // 从数据库获取订单详情
-  const sql = `
-    SELECT o.*, p.title, p.price, p.image_url, 
-           b.id as buyer_id, b.nickname as buyer_nickname, b.avatar as buyer_avatar,
-           s.id as seller_id, s.nickname as seller_nickname, s.avatar as seller_avatar
-    FROM orders o
-    LEFT JOIN products p ON o.product_id = p.id
-    LEFT JOIN users b ON o.buyer_id = b.id
-    LEFT JOIN users s ON o.seller_id = s.id
-    WHERE o.id = ?
-  `;
-
-  db.query(sql, [id]).then((orders) => {
-    const order = orders[0];
-    if (!order) {
-      return res.status(404).json({ message: "订单不存在" });
-    }
-    
-    if (order.buyer_id !== userId && order.seller_id !== userId) {
-      return res.status(403).json({ message: "无权限查看此订单" });
-    }
-    
-    const orderDetail = {
-      ...order,
-      product: {
-        id: order.product_id,
-        title: order.title,
-        price: order.price,
-        image_url: order.image_url
-      },
-      buyer: {
-        id: order.buyer_id,
-        nickname: order.buyer_nickname,
-        avatar: order.buyer_avatar
-      },
-      seller: {
-        id: order.seller_id,
-        nickname: order.seller_nickname,
-        avatar: order.seller_avatar
-      }
-    };
-    
-    res.json(orderDetail);
-  }).catch((error) => {
-    console.error('获取订单详情失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.patch("/api/orders/:id/status", authRequired, (req, res) => {
-  const id = Number(req.params.id);
-  const { status } = req.body ?? {};
-  const userId = req.auth.uid;
-  
-  // 从数据库获取订单信息
-  db.getById('orders', id).then((order) => {
-    if (!order) {
-      return res.status(404).json({ message: "订单不存在" });
-    }
-    
-    // 检查权限
-    if (status === "confirmed" && order.seller_id !== userId) {
-      return res.status(403).json({ message: "只有卖家可以确认订单" });
-    }
-    
-    if (status === "completed" && order.buyer_id !== userId) {
-      return res.status(403).json({ message: "只有买家可以确认收货" });
-    }
-    
-    if (status === "cancelled") {
-      if (order.buyer_id !== userId && order.seller_id !== userId) {
-        return res.status(403).json({ message: "只有买卖双方可以取消订单" });
-      }
-    }
-    
-    // 状态流转检查
-    if (status === "confirmed" && order.status !== "pending") {
-      return res.status(400).json({ message: "只能确认待确认的订单" });
-    }
-    
-    if (status === "completed" && order.status !== "confirmed") {
-      return res.status(400).json({ message: "只能完成待交付的订单" });
-    }
-    
-    if (status === "cancelled" && (order.status === "completed" || order.status === "cancelled")) {
-      return res.status(400).json({ message: "已完成或已取消的订单不能再次取消" });
-    }
-    
-    // 更新时间线
-    let timelineContent = "";
-    switch (status) {
-      case "confirmed":
-        timelineContent = "卖家已确认订单，等待线下交付";
-        break;
-      case "completed":
-        timelineContent = "买家确认收货，交易完成";
-        break;
-      case "cancelled":
-        timelineContent = `订单已取消：${order.buyer_id === userId ? "买家主动取消" : "卖家主动取消"}`;
-        break;
-    }
-    
-    // 解析现有的时间线
-    let timeline = [];
-    if (order.timeline) {
-      try {
-        timeline = JSON.parse(order.timeline);
-      } catch (e) {
-        timeline = [];
-      }
-    }
-    
-    // 添加新的时间线记录
-    timeline.push({
-      content: timelineContent,
-      time: new Date().toISOString()
-    });
-    
-    // 更新订单状态
-    return db.update('orders', id, {
-      status,
-      timeline: JSON.stringify(timeline),
-      updated_at: new Date().toISOString(),
-    }).then(() => {
-      // 创建系统通知
-      const notificationBuyer = {
-        id: `notif_${Date.now()}_1`,
-        user_id: order.buyer_id,
-        type: "order_status",
-        title: "订单状态更新",
-        content: timelineContent,
-        is_read: false,
-        order_id: order.id,
-        created_at: new Date().toISOString(),
-      };
-      
-      const notificationSeller = {
-        id: `notif_${Date.now()}_2`,
-        user_id: order.seller_id,
-        type: "order_status",
-        title: "订单状态更新",
-        content: timelineContent,
-        is_read: false,
-        order_id: order.id,
-        created_at: new Date().toISOString(),
-      };
-      
-      // 插入通知
-      return Promise.all([
-        db.insert('notifications', notificationBuyer),
-        db.insert('notifications', notificationSeller)
-      ]);
-    });
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('更新订单状态失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-// 交易评价管理
-app.post("/api/orders/:id/evaluation", authRequired, (req, res) => {
-  const id = Number(req.params.id);
-  const { rating, content, target_type } = req.body ?? {};
-  const userId = req.auth.uid;
-  
-  if (!rating || !content || !target_type) {
-    return res.status(400).json({ message: "rating、content 和 target_type 为必填" });
-  }
-  
-  // 从数据库获取订单信息
-  db.getById('orders', id).then((order) => {
-    if (!order) {
-      return res.status(404).json({ message: "订单不存在" });
-    }
-    
-    if (order.status !== "completed") {
-      return res.status(400).json({ message: "只有已完成的订单可以评价" });
-    }
-    
-    // 检查是否已经评价过
-    const checkSql = "SELECT * FROM evaluations WHERE order_id = ? AND user_id = ?";
-    return db.query(checkSql, [id, userId]).then((evaluations) => {
-      if (evaluations.length > 0) {
-        return res.status(400).json({ message: "已经评价过此订单" });
-      }
-      
-      // 创建评价
-      const evaluationData = {
-        order_id: id,
-        user_id: userId,
-        target_id: target_type === "seller" ? order.seller_id : order.buyer_id,
-        target_type,
-        rating,
-        content,
-        created_at: new Date().toISOString(),
-      };
-      
-      return db.insert('evaluations', evaluationData);
-    });
-  }).then(() => {
-    res.status(201).json({ message: "评价成功" });
-  }).catch((error) => {
-    console.error('创建评价失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-// 投诉与反馈管理
-app.post("/api/complaints", authRequired, (req, res) => {
-  const { type, target_id, content, evidence } = req.body ?? {};
-  const userId = req.auth.uid;
-  
-  if (!type || !target_id || !content) {
-    return res.status(400).json({ message: "type、target_id 和 content 为必填" });
-  }
-  
-  // 创建投诉
-  const complaintData = {
-    user_id: userId,
-    type,
-    target_id,
-    content,
-    evidence: evidence ? JSON.stringify(evidence) : null,
-    status: "pending",
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  db.insert('complaints', complaintData).then(() => {
-    res.status(201).json({ message: "投诉提交成功" });
-  }).catch((error) => {
-    console.error('创建投诉失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-// 系统通知管理
-app.get("/api/users/me/notifications", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  
-  // 从数据库获取通知列表
-  const sql = `
-    SELECT * FROM notifications
-    WHERE user_id = ?
-    ORDER BY created_at DESC
-  `;
-
-  db.query(sql, [userId]).then((notifications) => {
-    res.json({ list: notifications });
-  }).catch((error) => {
-    console.error('获取通知列表失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.patch("/api/notifications/:id/read", authRequired, (req, res) => {
-  const id = req.params.id;
-  const userId = req.auth.uid;
-  
-  // 检查通知是否存在
-  const checkSql = "SELECT * FROM notifications WHERE id = ? AND user_id = ?";
-  db.query(checkSql, [id, userId]).then((notifications) => {
-    if (notifications.length === 0) {
-      return res.status(404).json({ message: "通知不存在" });
-    }
-    
-    // 标记为已读
-    return db.query("UPDATE notifications SET is_read = true WHERE id = ?", [id]);
-  }).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('标记通知已读失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-app.patch("/api/notifications/read-all", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  
-  // 全部标记为已读
-  const updateSql = "UPDATE notifications SET is_read = true WHERE user_id = ?";
-  db.query(updateSql, [userId]).then(() => {
-    res.json({ message: "ok" });
-  }).catch((error) => {
-    console.error('全部标记通知已读失败:', error);
-    return res.status(500).json({ message: "服务器内部错误" });
-  });
-});
-
-// 消息系统
-app.get("/api/messages", authRequired, (req, res) => {
-  const userId = req.auth.uid;
-  
-  // 这里简化处理，实际应该有专门的消息表
-  // 暂时返回模拟数据，未读消息数量设为 0
-  res.json({
-    conversations: [
-      {
-        id: "conv1",
-        contact: {
-          id: 1,
-          nickname: "数码小王子",
-          avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix"
-        },
-        lastMessage: "iPad还在吗？可以便宜点吗",
-        lastTime: "10:30",
-        unreadCount: 0,
-        productTitle: "iPad Air 5 256G 星光色 99新",
-        productPrice: 2800,
-        productImage: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=100&h=100&fit=crop",
-        productId: "1"
-      }
-    ]
-  });
-});
-
-app.get("/api/messages/:id", authRequired, (req, res) => {
-  const id = req.params.id;
-  // 这里简化处理，实际应该从数据库获取消息
-  res.json({
-    messages: [
-      {
-        id: "m1",
-        senderId: "1",
-        content: "你好，这个iPad还在吗？",
-        type: "text",
-        time: "10:16",
-        isMe: false
-      },
-      {
-        id: "m2",
-        senderId: req.auth.uid.toString(),
-        content: "在的，成色很好，有什么想了解的？",
-        type: "text",
-        time: "10:20",
-        isMe: true
-      }
-    ]
-  });
-});
-
-app.post("/api/messages/:id", authRequired, (req, res) => {
-  const id = req.params.id;
-  const { content, type } = req.body ?? {};
-  
-  if (!content) {
-    return res.status(400).json({ message: "消息内容不能为空" });
-  }
-  
-  // 这里简化处理，实际应该保存消息到数据库
-  res.json({
-    id: `m${Date.now()}`,
-    senderId: req.auth.uid.toString(),
-    content,
-    type: type || "text",
-    time: new Date().toLocaleTimeString(),
-    isMe: true
-  });
-});
 
 app.get("/api/admin/users", adminRequired, (req, res) => {
   // 从数据库获取用户列表
@@ -1569,7 +663,7 @@ app.put("/api/admin/announcements/:id", adminRequired, (req, res) => {
     if (content != null) updateData.content = content;
     if (status != null) updateData.status = status === "draft" ? "draft" : "published";
     
-    return db.query("UPDATE announcements SET ? WHERE id = ?", [updateData, id]);
+    return db.update("announcements", id, updateData);
   }).then(() => {
     res.json({ message: "ok" });
   }).catch((error) => {
@@ -1682,7 +776,7 @@ app.put("/api/admin/banners/:id", adminRequired, (req, res) => {
     if (link != null) updateData.link = link;
     if (sort != null) updateData.sort = Number(sort);
     
-    return db.query("UPDATE banners SET ? WHERE id = ?", [updateData, id]);
+    return db.update("banners", id, updateData);
   }).then(() => {
     res.json({ message: "ok" });
   }).catch((error) => {
@@ -1809,7 +903,7 @@ app.put("/api/admin/categories/:id", adminRequired, (req, res) => {
     if (name != null) updateData.name = name;
     if (enabled != null) updateData.enabled = Boolean(enabled);
     
-    return db.query("UPDATE categories SET ? WHERE id = ?", [updateData, id]);
+    return db.update("categories", id, updateData);
   }).then(() => {
     res.json({ message: "ok" });
   }).catch((error) => {
@@ -2196,17 +1290,23 @@ app.get("/api/admin/favorites", adminRequired, (req, res) => {
 // 初始化数据库
 async function initDb() {
   try {
-    // 尝试初始化 MySQL 数据库
+    // 优先初始化 MySQL 数据库
     await db.initDatabase();
     console.log('MySQL 数据库初始化成功');
-  } catch (error) {
-    console.error('MySQL 数据库初始化失败，切换到本地 JSON 存储:', error.message);
-    // 切换到本地 JSON 存储
-    db = createJsonDbAdapter(jsonDb);
-    useJsonDb = true;
-    // 初始化本地 JSON 数据
-    seedIfEmpty();
-    console.log('本地 JSON 存储初始化成功');
+  } catch (mysqlError) {
+    console.error('MySQL 数据库初始化失败，尝试切换到 SQLite:', mysqlError.message);
+    try {
+      db = sqliteDb;
+      await db.initDatabase();
+      useJsonDb = false;
+      console.log('SQLite 数据库初始化成功');
+    } catch (sqliteError) {
+      console.error('SQLite 数据库初始化失败，切换到本地 JSON 存储:', sqliteError.message);
+      db = createJsonDbAdapter(jsonDb);
+      useJsonDb = true;
+      seedIfEmpty();
+      console.log('本地 JSON 存储初始化成功');
+    }
   }
 }
 
@@ -2411,7 +1511,7 @@ app.post('/api/recommend/record-view', authRequired, async (req, res) => {
         
         // 插入商品标签
         for (const tagName of tags) {
-          await db.query('INSERT IGNORE INTO product_tags (product_id, tag_name) VALUES (?, ?)', [productId, tagName]);
+          await db.query("INSERT OR IGNORE INTO product_tags (product_id, tag_name) VALUES (?, ?)", [productId, tagName]);
         }
         
         // 更新 productTags
@@ -2423,8 +1523,8 @@ app.post('/api/recommend/record-view', authRequired, async (req, res) => {
     const now = new Date().toISOString();
     for (const { tag_name } of productTags) {
       await db.query(
-        'INSERT INTO user_tags (user_id, tag_name, weight, update_time) VALUES (?, ?, 1, ?) ON DUPLICATE KEY UPDATE weight = weight + 1, update_time = ?',
-        [userId, tag_name, now, now]
+        "INSERT INTO user_tags (user_id, tag_name, weight, update_time) VALUES (?, ?, 1, ?) ON CONFLICT(user_id, tag_name) DO UPDATE SET weight = user_tags.weight + 1, update_time = excluded.update_time",
+        [userId, tag_name, now]
       );
     }
     
@@ -2703,6 +1803,5 @@ async function startServer() {
   });
 }
 
-// 启动服务器
-startServer();
+export { app, startServer };
 

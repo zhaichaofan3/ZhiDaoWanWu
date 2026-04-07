@@ -14,7 +14,7 @@ import { Search, Ban, RotateCcw, Shield, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useEffect } from "react";
 
-interface MockUser {
+interface AdminUser {
   id: number;
   nickname: string;
   avatar: string;
@@ -26,18 +26,10 @@ interface MockUser {
   orders: number;
 }
 
-const mockUsers: MockUser[] = [
-  { id: 1, nickname: "数码小王子", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Felix", studentId: "2021001", role: "user", status: "active", createdAt: "2024-01-15", products: 12, orders: 8 },
-  { id: 2, nickname: "学霸菌", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Luna", studentId: "2021002", role: "user", status: "active", createdAt: "2024-01-20", products: 5, orders: 3 },
-  { id: 3, nickname: "音乐达人", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Max", studentId: "2022015", role: "admin", status: "active", createdAt: "2024-02-01", products: 8, orders: 6 },
-  { id: 4, nickname: "即将毕业", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Coco", studentId: "2020088", role: "user", status: "banned", createdAt: "2024-02-10", products: 2, orders: 1 },
-  { id: 5, nickname: "球鞋控", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mia", studentId: "2023033", role: "user", status: "active", createdAt: "2024-03-01", products: 15, orders: 10 },
-];
-
 const UserManagement = () => {
   const [search, setSearch] = useState("");
-  const [users, setUsers] = useState<MockUser[]>([]);
-  const [selectedUser, setSelectedUser] = useState<MockUser | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     api

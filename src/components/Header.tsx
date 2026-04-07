@@ -4,13 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
-import { getToken } from "@/lib/auth";
+import { clearAuth, getMe, getToken, type Me } from "@/lib/auth";
 
 const Header = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [user, setUser] = useState<Me | null>(null);
+
+  useEffect(() => {
+    setUser(getMe());
+  }, [location.pathname]);
 
   useEffect(() => {
     // 只有登录后才获取未读消息数量
@@ -32,6 +37,14 @@ const Header = () => {
   ];
 
   const isActive = (path: string) => location.pathname === path;
+  const isLoggedIn = !!user && !!getToken();
+
+  const handleLogout = () => {
+    clearAuth();
+    setUser(null);
+    setUnreadCount(0);
+    setMobileMenuOpen(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
@@ -95,9 +108,33 @@ const Header = () => {
               <User className="h-4 w-4" />
             </Button>
           </Link>
-          <Link to="/login">
-            <Button size="sm" className="ml-1">登录</Button>
-          </Link>
+          {isLoggedIn ? (
+            <div className="relative ml-1 group">
+              <button
+                type="button"
+                className="h-9 px-2 rounded-md text-sm text-muted-foreground hover:text-foreground max-w-24 truncate"
+                title={user.nickname}
+              >
+                {user.nickname}
+              </button>
+              <div className="absolute right-0 top-full pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
+                <div className="min-w-28 rounded-md border border-border bg-popover shadow-md p-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-destructive hover:text-destructive"
+                    onClick={handleLogout}
+                  >
+                    退出登录
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Link to="/login">
+              <Button size="sm" className="ml-1">登录</Button>
+            </Link>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -127,9 +164,15 @@ const Header = () => {
               <Link to="/profile" className="flex-1" onClick={() => setMobileMenuOpen(false)}>
                 <Button variant="outline" className="w-full">个人中心</Button>
               </Link>
-              <Link to="/login" className="flex-1" onClick={() => setMobileMenuOpen(false)}>
-                <Button className="w-full">登录</Button>
-              </Link>
+              {isLoggedIn ? (
+                <Button variant="outline" className="flex-1" onClick={handleLogout}>
+                  退出（{user.nickname}）
+                </Button>
+              ) : (
+                <Link to="/login" className="flex-1" onClick={() => setMobileMenuOpen(false)}>
+                  <Button className="w-full">登录</Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>

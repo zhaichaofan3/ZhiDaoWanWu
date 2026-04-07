@@ -1,8 +1,8 @@
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import HeroCarousel from "@/components/HeroCarousel";
-import CategoryNav from "@/components/CategoryNav";
-import ProductCard from "@/components/ProductCard";
+import Header from "@/features/public/components/Header";
+import Footer from "@/features/public/components/Footer";
+import HeroCarousel from "@/features/public/components/HeroCarousel";
+import CategoryNav from "@/features/public/components/CategoryNav";
+import ProductCard from "@/features/public/components/ProductCard";
 import { Link } from "react-router-dom";
 import { ArrowRight, Megaphone } from "lucide-react";
 import { Button } from "@/components/ui/button";
