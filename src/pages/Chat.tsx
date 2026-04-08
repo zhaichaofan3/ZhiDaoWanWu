@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Send, Image, MoreVertical } from "lucide-react";
 import { api } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/assets";
 
 interface ChatMessage {
   id: string;
@@ -128,7 +129,7 @@ const Chat = () => {
           </Button>
         </Link>
         <Avatar className="h-9 w-9">
-          <AvatarImage src={conversation.contact.avatar} />
+          <AvatarImage src={resolveAssetUrl(conversation.contact.avatar)} />
           <AvatarFallback>{conversation.contact.nickname[0]}</AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
@@ -148,7 +149,7 @@ const Chat = () => {
       {conversation.productTitle && (
         <div className="shrink-0 border-b border-border bg-muted/30 px-4 py-2 flex items-center gap-3">
           <img
-            src={conversation.productImage}
+            src={resolveAssetUrl(conversation.productImage)}
             alt=""
             className="h-10 w-10 rounded-md object-cover"
           />
@@ -172,7 +173,11 @@ const Chat = () => {
             >
               <Avatar className="h-8 w-8 shrink-0">
                 <AvatarImage
-                  src={msg.isMe ? "https://api.dicebear.com/7.x/adventurer/svg?seed=Me" : conversation.contact.avatar}
+                  src={
+                    msg.isMe
+                      ? "https://api.dicebear.com/7.x/adventurer/svg?seed=Me"
+                      : resolveAssetUrl(conversation.contact.avatar)
+                  }
                 />
                 <AvatarFallback>{msg.isMe ? "我" : conversation.contact.nickname[0]}</AvatarFallback>
               </Avatar>
@@ -180,7 +185,11 @@ const Chat = () => {
                 {msg.type === "product-card" && msg.productCard ? (
                   <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
                     <div className="flex gap-2">
-                      <img src={msg.productCard.image} alt="" className="h-14 w-14 rounded-md object-cover" />
+                      <img
+                        src={resolveAssetUrl(msg.productCard.image)}
+                        alt=""
+                        className="h-14 w-14 rounded-md object-cover bg-muted"
+                      />
                       <div>
                         <p className="text-sm text-foreground line-clamp-2">{msg.productCard.title}</p>
                         <p className="text-sm font-bold text-primary mt-1">¥{msg.productCard.price}</p>

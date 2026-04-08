@@ -10,6 +10,7 @@ import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
 import type { Order } from "@/types";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const statusSteps = ["待确认", "待交付", "已完成"];
 const statusMap: Record<string, string> = {
@@ -24,6 +25,7 @@ const OrderDetail = () => {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [myEvaluation, setMyEvaluation] = useState<any | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -76,6 +78,16 @@ const OrderDetail = () => {
           timeline: response.timeline || []
         };
         setOrder(formattedOrder);
+        if (response.status === "completed") {
+          try {
+            const e = await api.getMyEvaluation(Number(id));
+            setMyEvaluation(e);
+          } catch {
+            setMyEvaluation(null);
+          }
+        } else {
+          setMyEvaluation(null);
+        }
       } catch (error) {
         console.error("获取订单详情失败", error);
         setOrder(null);
@@ -208,7 +220,11 @@ const OrderDetail = () => {
           </CardHeader>
           <CardContent>
             <Link to={`/product/${order.product.id}`} className="flex gap-3">
-              <img src={order.product.images[0] || "https://via.placeholder.com/100"} alt="" className="h-20 w-20 rounded-lg object-cover shrink-0" />
+              <img
+                src={resolveAssetUrl(order.product.images?.[0]) || "https://via.placeholder.com/100"}
+                alt=""
+                className="h-20 w-20 rounded-lg object-cover shrink-0"
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">{order.product.title}</p>
                 <p className="text-xs text-muted-foreground mt-1">成色：{order.product.condition}</p>
@@ -227,7 +243,7 @@ const OrderDetail = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={otherParty.avatar} />
+                  <AvatarImage src={resolveAssetUrl(otherParty.avatar)} />
                   <AvatarFallback>{otherParty.nickname[0]}</AvatarFallback>
                 </Avatar>
                 <span className="font-medium text-foreground">{otherParty.nickname}</span>
@@ -296,7 +312,14 @@ const OrderDetail = () => {
           </Button>
         )}
         {order.status === "completed" && (
-          <Button variant="outline" className="w-full">评价订单</Button>
+          <Button
+            variant={myEvaluation ? "secondary" : "outline"}
+            className="w-full"
+            disabled={!!myEvaluation}
+            onClick={() => navigate(`/order/${order.id}/evaluate`)}
+          >
+            {myEvaluation ? "已评价" : "评价订单"}
+          </Button>
         )}
       </main>
       <Footer />

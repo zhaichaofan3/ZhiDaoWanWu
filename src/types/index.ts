@@ -3,11 +3,8 @@ export interface User {
   nickname: string;
   avatar: string;
   gender: "male" | "female" | "other";
-  grade: string;
-  major: string;
   bio: string;
   phone: string;
-  studentId: string;
   createdAt: string;
 }
 
@@ -33,7 +30,7 @@ export interface Product {
     nickname: string;
     avatar: string;
   };
-  status: "审核中" | "已上架" | "已下架" | "已驳回" | "已售出";
+  status: "已上架" | "已下架" | "已售出";
   views: number;
   favorites: number;
   isFavorited?: boolean;

@@ -13,6 +13,8 @@ import { api } from "@/lib/api";
 const Addresses = () => {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     contact: "",
     phone: "",
@@ -41,7 +43,7 @@ const Addresses = () => {
         <div className="container max-w-2xl py-4 md:py-6">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-xl font-bold text-foreground">收货地址</h1>
-            <Dialog>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-1.5"><Plus className="h-4 w-4" /> 新增地址</Button>
               </DialogTrigger>
@@ -99,22 +101,28 @@ const Addresses = () => {
                   </div>
                   <Button
                     className="w-full"
-                    disabled={loading}
+                    disabled={submitting}
                     onClick={async () => {
-                      const isDefault = addresses.length === 0;
-                      await api.addAddress({
-                        contact: form.contact,
-                        phone: form.phone,
-                        campus: form.campus,
-                        building: form.building,
-                        detail: form.detail,
-                        isDefault,
-                      });
-                      setForm({ contact: "", phone: "", campus: "东校区", building: "", detail: "" });
-                      await refresh();
+                      setSubmitting(true);
+                      try {
+                        const isDefault = addresses.length === 0;
+                        await api.addAddress({
+                          contact: form.contact,
+                          phone: form.phone,
+                          campus: form.campus,
+                          building: form.building,
+                          detail: form.detail,
+                          isDefault,
+                        });
+                        setForm({ contact: "", phone: "", campus: "东校区", building: "", detail: "" });
+                        await refresh();
+                        setDialogOpen(false);
+                      } finally {
+                        setSubmitting(false);
+                      }
                     }}
                   >
-                    保存地址
+                    {submitting ? "保存中..." : "保存地址"}
                   </Button>
                 </div>
               </DialogContent>

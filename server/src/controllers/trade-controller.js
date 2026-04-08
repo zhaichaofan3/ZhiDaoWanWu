@@ -37,6 +37,14 @@ export function buildTradeController(deps) {
         return res.status(500).json({ message: "服务器内部错误" });
       }
     },
+    async getMyEvaluation(req, res) {
+      try {
+        return send(res, await service.getMyEvaluation(Number(req.params.id), req.auth.uid));
+      } catch (error) {
+        console.error("获取订单评价失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
     async changeStatus(req, res) {
       try {
         return send(res, await service.updateOrderStatus(Number(req.params.id), req.auth.uid, req.body?.status));

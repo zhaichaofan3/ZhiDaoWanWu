@@ -7,18 +7,17 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
-} from "@/components/ui/dialog";
-import { Search, Ban, RotateCcw, Shield, ShieldCheck } from "lucide-react";
+import { Search, Ban, RotateCcw, Shield, ShieldCheck, SquareArrowOutUpRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { resolveAssetUrl } from "@/lib/assets";
 
 interface AdminUser {
   id: number;
   nickname: string;
   avatar: string;
-  studentId: string;
+  phone: string;
   role: "user" | "admin";
   status: "active" | "banned";
   createdAt: string;
@@ -27,9 +26,9 @@ interface AdminUser {
 }
 
 const UserManagement = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     api
@@ -42,7 +41,7 @@ const UserManagement = () => {
   }, []);
 
   const filtered = users.filter(
-    (u) => u.nickname.includes(search) || u.studentId.includes(search)
+    (u) => u.nickname.includes(search) || u.phone.includes(search)
   );
 
   const toggleBan = (userId: number) => {
@@ -68,7 +67,7 @@ const UserManagement = () => {
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="搜索昵称或学号..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder="搜索昵称或手机号..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Badge variant="secondary">{filtered.length} 位用户</Badge>
       </div>
@@ -79,7 +78,7 @@ const UserManagement = () => {
             <TableHeader>
               <TableRow>
                 <TableHead>用户</TableHead>
-                <TableHead>学号</TableHead>
+                <TableHead>手机号</TableHead>
                 <TableHead>角色</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead>发布/订单</TableHead>
@@ -91,15 +90,15 @@ const UserManagement = () => {
               {filtered.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell>
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setSelectedUser(user)}>
+                    <div className="flex items-center gap-2">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={user.avatar} />
+                        <AvatarImage src={resolveAssetUrl(user.avatar)} />
                         <AvatarFallback>{user.nickname[0]}</AvatarFallback>
                       </Avatar>
                       <span className="text-sm font-medium">{user.nickname}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{user.studentId}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{user.phone}</TableCell>
                   <TableCell>
                     <Badge variant={user.role === "admin" ? "default" : "secondary"}>
                       {user.role === "admin" ? "管理员" : "用户"}
@@ -114,6 +113,15 @@ const UserManagement = () => {
                   <TableCell className="text-sm text-muted-foreground">{user.createdAt}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="详情"
+                        onClick={() => navigate(`/admin/users/${user.id}`)}
+                      >
+                        <SquareArrowOutUpRight className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-8 w-8" title={user.role === "admin" ? "取消管理员" : "设为管理员"} onClick={() => toggleRole(user.id)}>
                         {user.role === "admin" ? <ShieldCheck className="h-4 w-4 text-primary" /> : <Shield className="h-4 w-4" />}
                       </Button>
@@ -128,51 +136,6 @@ const UserManagement = () => {
           </Table>
         </CardContent>
       </Card>
-
-      {/* User Detail Dialog */}
-      <Dialog open={!!selectedUser} onOpenChange={() => setSelectedUser(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>用户详情</DialogTitle>
-            <DialogDescription>查看用户的详细信息</DialogDescription>
-          </DialogHeader>
-          {selectedUser && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-14 w-14">
-                  <AvatarImage src={selectedUser.avatar} />
-                  <AvatarFallback>{selectedUser.nickname[0]}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-foreground">{selectedUser.nickname}</p>
-                  <p className="text-sm text-muted-foreground">学号：{selectedUser.studentId}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-muted-foreground">角色</p>
-                  <p className="font-medium">{selectedUser.role === "admin" ? "管理员" : "普通用户"}</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-muted-foreground">状态</p>
-                  <p className="font-medium">{selectedUser.status === "active" ? "正常" : "已封禁"}</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-muted-foreground">发布商品</p>
-                  <p className="font-medium">{selectedUser.products} 件</p>
-                </div>
-                <div className="bg-muted/50 rounded-lg p-3">
-                  <p className="text-muted-foreground">交易订单</p>
-                  <p className="font-medium">{selectedUser.orders} 笔</p>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedUser(null)}>关闭</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

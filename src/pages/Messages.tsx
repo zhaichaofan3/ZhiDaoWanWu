@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search, MessageCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
+import { resolveAssetUrl } from "@/lib/assets";
 
 interface Conversation {
   id: string;
@@ -103,7 +104,7 @@ const Messages = () => {
                 >
                   <div className="relative shrink-0">
                     <Avatar className="h-12 w-12">
-                      <AvatarImage src={conv.contact.avatar} />
+                      <AvatarImage src={resolveAssetUrl(conv.contact.avatar)} />
                       <AvatarFallback>{conv.contact.nickname[0]}</AvatarFallback>
                     </Avatar>
                     {conv.unreadCount > 0 && (

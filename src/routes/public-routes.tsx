@@ -3,6 +3,7 @@ import {
   AnnouncementsPage,
   AddressesPage,
   ChangePasswordPage,
+  ChangePhonePage,
   ChatPage,
   FavoritesPage,
   ForgotPasswordPage,
@@ -12,6 +13,7 @@ import {
   MyProductsPage,
   NotFoundPage,
   OrderDetailPage,
+  OrderEvaluatePage,
   OrdersPage,
   ProductDetailPage,
   ProductsPage,
@@ -36,10 +38,12 @@ export const publicRoutes = (
     <Route path="/favorites" element={<FavoritesPage />} />
     <Route path="/addresses" element={<AddressesPage />} />
     <Route path="/change-password" element={<ChangePasswordPage />} />
+    <Route path="/change-phone" element={<ChangePhonePage />} />
     <Route path="/messages" element={<MessagesPage />} />
     <Route path="/chat/:id" element={<ChatPage />} />
     <Route path="/orders" element={<OrdersPage />} />
     <Route path="/order/:id" element={<OrderDetailPage />} />
+    <Route path="/order/:id/evaluate" element={<OrderEvaluatePage />} />
     <Route path="/test-new-features" element={<TestNewFeaturesPage />} />
     <Route path="*" element={<NotFoundPage />} />
   </>

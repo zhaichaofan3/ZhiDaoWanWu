@@ -9,6 +9,15 @@ export function buildUserController(deps) {
   };
 
   return {
+    async getMyStats(req, res) {
+      try {
+        return res.json(await service.getMyStats(req.auth.uid));
+      } catch (error) {
+        console.error("获取个人中心统计失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
     async updateProfile(req, res) {
       try {
         return send(res, await service.updateProfile(req.auth.uid, req.body ?? {}));
@@ -102,6 +111,26 @@ export function buildUserController(deps) {
     sendMessage(req, res) {
       const { content, type } = req.body ?? {};
       return send(res, service.sendMessage(req.auth.uid, content, type));
+    },
+
+    async sendChangePhoneCode(req, res) {
+      try {
+        const { newPhone } = req.body ?? {};
+        return send(res, await service.sendChangePhoneCode(req.auth.uid, newPhone));
+      } catch (error) {
+        console.error("发送更换手机号验证码失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async confirmChangePhone(req, res) {
+      try {
+        const { newPhone, code } = req.body ?? {};
+        return send(res, await service.confirmChangePhone(req.auth.uid, newPhone, code));
+      } catch (error) {
+        console.error("更换手机号失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
     },
   };
 }

@@ -47,7 +47,7 @@ const Products = () => {
             nickname: p.owner_name || "未知卖家",
             avatar: ""
           },
-          status: p.status === "approved" ? "已上架" : p.status === "pending" ? "审核中" : "已下架",
+          status: p.status === "down" || p.status === "deleted" ? "已下架" : "已上架",
           views: p.views || 0,
           favorites: p.favorites || 0,
           campus: p.campus || "",

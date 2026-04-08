@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const PublishProduct = () => {
   const [images, setImages] = useState<string[]>([]);
@@ -61,8 +62,9 @@ const PublishProduct = () => {
     }
     setUploadingImage(true);
     try {
-      const { url } = await api.ossUploadFile(file, "products");
-      setImages((prev) => [...prev, url].slice(0, 9));
+      const { path, url } = await api.ossUploadFile(file, "products");
+      // 数据库存相对路径更稳（生产/开发自动适配）；兼容没有 path 的老返回
+      setImages((prev) => [...prev, path || url].slice(0, 9));
     } catch (error) {
       console.error("图片上传失败:", error);
       alert("图片上传失败，请检查 OSS 配置后重试");
@@ -137,7 +139,7 @@ const PublishProduct = () => {
         campus,
         owner_id: user.id
       });
-      alert("发布成功，等待审核");
+      alert("发布成功，已上架");
       // 重置表单
       setTitle("");
       setCategoryId("");
@@ -168,7 +170,7 @@ const PublishProduct = () => {
               <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
                 {images.map((img, i) => (
                   <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-muted border border-border">
-                    <img src={img} alt="" className="h-full w-full object-cover" />
+                    <img src={resolveAssetUrl(img)} alt="" className="h-full w-full object-cover" />
                     <button
                       onClick={() => setImages(images.filter((_, j) => j !== i))}
                       className="absolute top-1 right-1 h-5 w-5 rounded-full bg-foreground/60 text-background flex items-center justify-center hover:bg-foreground/80"

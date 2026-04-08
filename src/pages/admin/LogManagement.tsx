@@ -51,9 +51,6 @@ const LogManagement = () => {
           <Button variant={actionFilter === "全部" ? "default" : "outline"} size="sm" onClick={() => setActionFilter("全部")}>
             全部操作
           </Button>
-          <Button variant={actionFilter === "商品审核" ? "default" : "outline"} size="sm" onClick={() => setActionFilter("商品审核")}>
-            商品审核
-          </Button>
           <Button variant={actionFilter === "处理投诉" ? "default" : "outline"} size="sm" onClick={() => setActionFilter("处理投诉")}>
             处理投诉
           </Button>

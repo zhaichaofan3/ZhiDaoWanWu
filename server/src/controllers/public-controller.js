@@ -34,5 +34,15 @@ export function buildPublicController(deps) {
         return res.status(500).json({ message: "服务器内部错误" });
       }
     },
+
+    async dicts(req, res) {
+      try {
+        const { type } = req.query ?? {};
+        return res.json(await service.getDictItems(type));
+      } catch (error) {
+        console.error("获取字典失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
   };
 }

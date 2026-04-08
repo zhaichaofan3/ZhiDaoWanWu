@@ -2,7 +2,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
@@ -13,37 +12,42 @@ const Register = () => {
   const navigate = useNavigate();
 
   const [nickname, setNickname] = useState("");
-  const [studentId, setStudentId] = useState("");
   const [phone, setPhone] = useState("");
-  const [grade, setGrade] = useState("2022级");
-  const [major, setMajor] = useState("");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [coolDownUntil, setCoolDownUntil] = useState<number>(0);
+
+  const getErrorMessage = (e: unknown) => {
+    if (e && typeof e === "object" && "message" in e) {
+      const msg = (e as { message?: unknown }).message;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+    return "注册失败";
+  };
 
   const onRegister = async () => {
     if (password !== confirmPassword) return alert("两次密码不一致");
-    if (!nickname.trim() || !studentId.trim() || !password) return;
+    if (!nickname.trim() || !phone.trim() || !code.trim() || !password) return;
     setLoading(true);
     try {
       const resp = await api.register({
         nickname: nickname.trim(),
-        studentId: studentId.trim(),
-        phone: phone.trim() || undefined,
+        phone: phone.trim(),
+        code: code.trim(),
         password,
-        grade,
-        major: major.trim() || undefined,
       });
       setToken(resp.token);
       setMe({
         id: resp.user.id,
         nickname: resp.user.nickname,
         role: resp.user.role,
-        studentId: resp.user.studentId,
       });
       navigate("/", { replace: true });
-    } catch (e: any) {
-      alert(e?.message || "注册失败");
+    } catch (e: unknown) {
+      alert(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -53,23 +57,26 @@ const Register = () => {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xl mb-3">
-            校
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">注册账号</h1>
-          <p className="text-sm text-muted-foreground mt-1">加入校园二手交易平台</p>
+          <img
+            src="/logos/logo_with_slogan_black.svg"
+            alt="校园二手交易平台"
+            className="mx-auto h-16 w-auto mb-3 dark:hidden"
+            loading="eager"
+            decoding="async"
+          />
+          <img
+            src="/logos/logo_with_slogan_white.svg"
+            alt="校园二手交易平台"
+            className="mx-auto h-16 w-auto mb-3 hidden dark:block"
+            loading="eager"
+            decoding="async"
+          />
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="nickname">昵称</Label>
-              <Input id="nickname" placeholder="取个昵称" value={nickname} onChange={(e) => setNickname(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="studentId">学号</Label>
-              <Input id="studentId" placeholder="请输入学号" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="nickname">昵称</Label>
+            <Input id="nickname" placeholder="取个昵称" value={nickname} onChange={(e) => setNickname(e.target.value)} />
           </div>
 
           <div className="space-y-2">
@@ -77,22 +84,31 @@ const Register = () => {
             <Input id="phone" type="tel" placeholder="请输入手机号" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>年级</Label>
-              <Select value={grade} onValueChange={(v) => setGrade(v)}>
-                <SelectTrigger><SelectValue placeholder="选择年级" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="2021级">2021级</SelectItem>
-                  <SelectItem value="2022级">2022级</SelectItem>
-                  <SelectItem value="2023级">2023级</SelectItem>
-                  <SelectItem value="2024级">2024级</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="major">专业</Label>
-              <Input id="major" placeholder="请输入专业" value={major} onChange={(e) => setMajor(e.target.value)} />
+          <div className="space-y-2">
+            <Label htmlFor="code">验证码</Label>
+            <div className="flex gap-2">
+              <Input id="code" placeholder="请输入验证码" value={code} onChange={(e) => setCode(e.target.value)} />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={sending || !phone.trim() || Date.now() < coolDownUntil}
+                onClick={async () => {
+                  const p = phone.trim();
+                  if (!p) return;
+                  setSending(true);
+                  try {
+                    await api.authSendSmsCode({ phone: p, scene: "register" });
+                    alert("验证码已发送");
+                    setCoolDownUntil(Date.now() + 60 * 1000);
+                  } catch (e: any) {
+                    alert(e?.message || "发送失败");
+                  } finally {
+                    setSending(false);
+                  }
+                }}
+              >
+                {Date.now() < coolDownUntil ? `${Math.ceil((coolDownUntil - Date.now()) / 1000)}s` : sending ? "发送中..." : "发送验证码"}
+              </Button>
             </div>
           </div>
 
@@ -129,7 +145,7 @@ const Register = () => {
             />
           </div>
 
-          <Button className="w-full" size="lg" disabled={loading} onClick={onRegister}>
+          <Button className="w-full" size="lg" disabled={loading || !nickname.trim() || !phone.trim() || !code.trim() || !password || !confirmPassword} onClick={onRegister}>
             {loading ? "注册中..." : "注册"}
           </Button>
 

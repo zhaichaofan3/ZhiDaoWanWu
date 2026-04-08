@@ -5,12 +5,9 @@ export interface User {
   id: number;
   nickname: string;
   role: "user" | "admin";
-  studentId?: string;
   avatar?: string;
   phone?: string;
   gender?: "male" | "female" | "other";
-  grade?: string;
-  major?: string;
   bio?: string;
 }
 

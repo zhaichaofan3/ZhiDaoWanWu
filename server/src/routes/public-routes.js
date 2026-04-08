@@ -9,6 +9,7 @@ export function createPublicRouter(deps) {
   router.get("/announcements", controller.announcements);
   router.get("/banners", controller.banners);
   router.get("/categories", controller.categories);
+  router.get("/dicts", controller.dicts);
 
   return router;
 }

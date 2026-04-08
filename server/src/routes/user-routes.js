@@ -5,6 +5,7 @@ export function createUserRouter(deps) {
   const router = Router();
   const controller = buildUserController(deps);
 
+  router.get("/users/me/stats", deps.authRequired, controller.getMyStats);
   router.put("/users/me/profile", deps.authRequired, controller.updateProfile);
   router.put("/users/me/password", deps.authRequired, controller.updatePassword);
 
@@ -20,6 +21,10 @@ export function createUserRouter(deps) {
   router.get("/messages", deps.authRequired, controller.listConversations);
   router.get("/messages/:id", deps.authRequired, controller.listMessages);
   router.post("/messages/:id", deps.authRequired, controller.sendMessage);
+
+  // 更换手机号（已登录）
+  router.post("/users/me/phone/send-code", deps.authRequired, controller.sendChangePhoneCode);
+  router.post("/users/me/phone/confirm", deps.authRequired, controller.confirmChangePhone);
 
   return router;
 }

@@ -2,12 +2,15 @@ export { default as AdminLayout } from "@/features/admin/components/AdminLayout"
 export { default as RequireAdmin } from "@/features/admin/guards/RequireAdmin";
 export { default as DashboardPage } from "@/pages/admin/Dashboard";
 export { default as UserManagementPage } from "@/pages/admin/UserManagement";
-export { default as ProductAuditPage } from "@/pages/admin/ProductAudit";
+export { default as UserDetailPage } from "@/pages/admin/UserDetail";
+export { default as ProductManagementPage } from "@/pages/admin/ProductManagement";
 export { default as AnnouncementManagementPage } from "@/pages/admin/AnnouncementManagement";
 export { default as BannerManagementPage } from "@/pages/admin/BannerManagement";
 export { default as CategoryManagementPage } from "@/pages/admin/CategoryManagement";
+export { default as DictManagementPage } from "@/pages/admin/DictManagement";
 export { default as OrderManagementPage } from "@/pages/admin/OrderManagement";
 export { default as ComplaintManagementPage } from "@/pages/admin/ComplaintManagement";
 export { default as EvaluationManagementPage } from "@/pages/admin/EvaluationManagement";
 export { default as FavoriteManagementPage } from "@/pages/admin/FavoriteManagement";
 export { default as LogManagementPage } from "@/pages/admin/LogManagement";
+export { default as AiCenterPage } from "@/pages/admin/AiCenter";

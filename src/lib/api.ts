@@ -54,14 +54,59 @@ async function uploadViaBackend(file: File, folder = "products") {
     }
     throw new Error(message);
   }
-  return (await res.json()) as { url: string; key: string; bucket: string };
+  return (await res.json()) as { url: string; path?: string; key: string; bucket: string };
+}
+
+async function uploadBannerViaAdmin(file: File) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/api/admin/banners/upload`, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  });
+  if (!res.ok) {
+    let message = `上传失败 (${res.status})`;
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as { url: string; key?: string; bucket?: string; path?: string };
 }
 
 export const api = {
   health: () => request<{ status: string }>("/api/health"),
 
-  login: (data: { account: string; password: string }) =>
-    request<{ user: { id: number; nickname: string; role: "user" | "admin"; studentId?: string }; token: string }>(
+  authSendSmsCode: (data: { phone: string; scene: "login" | "reset_password" | "change_phone" | "register" }) =>
+    request<{ message: string }>("/api/auth/sms/send", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  authLoginBySms: (data: { phone: string; code: string }) =>
+    request<{ user: { id: number; nickname: string; role: "user" | "admin" }; token: string }>(
+      "/api/auth/sms/login",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    ),
+
+  authResetPasswordBySms: (data: { phone: string; code: string; newPassword: string }) =>
+    request<{ message: string }>("/api/auth/sms/reset-password", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  login: (data: { phone: string; password: string }) =>
+    request<{ user: { id: number; nickname: string; role: "user" | "admin" }; token: string }>(
       "/api/auth/login",
       {
         method: "POST",
@@ -71,17 +116,15 @@ export const api = {
 
   register: (data: {
     nickname: string;
-    studentId: string;
-    phone?: string;
+    phone: string;
+    code: string;
     password: string;
     gender?: "male" | "female" | "other";
-    grade?: string;
-    major?: string;
     bio?: string;
     avatar?: string;
   }) =>
     request<{
-      user: { id: number; nickname: string; role: "user" | "admin"; studentId?: string };
+      user: { id: number; nickname: string; role: "user" | "admin" };
       token: string;
     }>("/api/auth/register", {
       method: "POST",
@@ -94,12 +137,21 @@ export const api = {
       return r.user;
     }),
 
+  meStats: () =>
+    request<{
+      stats: {
+        published: number;
+        favorites: number;
+        bought: number;
+        sold: number;
+        trades: number;
+      };
+    }>("/api/users/me/stats").then((r) => r.stats),
+
   updateProfile: (data: {
     nickname: string;
     avatar?: string;
     gender?: "male" | "female" | "other";
-    grade?: string;
-    major?: string;
     bio?: string;
   }) =>
     request<{ message: string }>("/api/users/me/profile", {
@@ -110,6 +162,18 @@ export const api = {
   updatePassword: (data: { oldPassword: string; newPassword: string }) =>
     request<{ message: string }>("/api/users/me/password", {
       method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  sendChangePhoneCode: (data: { newPhone: string }) =>
+    request<{ message: string }>("/api/users/me/phone/send-code", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  confirmChangePhone: (data: { newPhone: string; code: string }) =>
+    request<{ message: string }>("/api/users/me/phone/confirm", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
 
@@ -144,7 +208,7 @@ export const api = {
         id: number;
         nickname: string;
         avatar?: string;
-        studentId: string;
+        phone: string;
         role: "user" | "admin";
         status: "active" | "banned";
         createdAt: string;
@@ -152,6 +216,26 @@ export const api = {
         orders: number;
       }>;
     }>("/api/admin/users").then((r) => r.list),
+
+  adminGetUserDetail: (userId: number) =>
+    request<{
+      user: {
+        id: number;
+        email?: string | null;
+        name?: string | null;
+        nickname: string;
+        avatar?: string | null;
+        phone: string;
+        gender?: "male" | "female" | "other" | string | null;
+        bio?: string | null;
+        role: "user" | "admin";
+        status: "active" | "banned";
+        created_at: string;
+      };
+      stats: { products: number; orders: number; favorites: number };
+      products: any[];
+      orders: any[];
+    }>(`/api/admin/users/${userId}`),
 
   adminSetUserRole: (userId: number, role: "user" | "admin") =>
     request<{ message: string }>(`/api/admin/users/${userId}/role`, {
@@ -164,6 +248,36 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+
+  adminSetUserAvatar: (userId: number, avatar: string) =>
+    request<{ message: string }>(`/api/admin/users/${userId}/avatar`, {
+      method: "PATCH",
+      body: JSON.stringify({ avatar }),
+    }),
+
+  adminResetUserPassword: (userId: number, newPassword: string) =>
+    request<{ message: string }>(`/api/admin/users/${userId}/password`, {
+      method: "POST",
+      body: JSON.stringify({ newPassword }),
+    }),
+
+  adminGetUserLogs: (userId: number, limit = 50) => {
+    const q = new URLSearchParams();
+    q.set("limit", String(limit));
+    return request<{ list: any[] }>(`/api/admin/users/${userId}/logs?${q.toString()}`).then((r) => r.list);
+  },
+
+  adminGetUserComplaints: (userId: number, limit = 50) => {
+    const q = new URLSearchParams();
+    q.set("limit", String(limit));
+    return request<{ list: any[] }>(`/api/admin/users/${userId}/complaints?${q.toString()}`).then((r) => r.list);
+  },
+
+  adminGetUserEvaluations: (userId: number, limit = 50) => {
+    const q = new URLSearchParams();
+    q.set("limit", String(limit));
+    return request<{ list: any[] }>(`/api/admin/users/${userId}/evaluations?${q.toString()}`).then((r) => r.list);
+  },
 
   adminStats: () =>
     request<{ stats: any }>("/api/admin/stats").then((r) => r.stats),
@@ -273,6 +387,98 @@ export const api = {
   adminDeleteCategory: (id: string) =>
     request<void>(`/api/admin/categories/${id}`, { method: "DELETE" }),
 
+  // Admin: 字典管理
+  adminListDictItems: (type: string) =>
+    request<{ list: any[] }>(`/api/admin/dicts/${encodeURIComponent(type)}`).then((r) => r.list),
+
+  adminCreateDictItem: (type: string, data: { value: string; label: string; enabled?: boolean }) =>
+    request<{ item: any }>(`/api/admin/dicts/${encodeURIComponent(type)}`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }).then((r) => r.item),
+
+  adminUpdateDictItem: (type: string, id: string, data: { value?: string; label?: string; enabled?: boolean; sort?: number }) =>
+    request<{ message: string }>(`/api/admin/dicts/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  adminSortDictItems: (type: string, ids: string[]) =>
+    request<{ message: string }>(`/api/admin/dicts/${encodeURIComponent(type)}/sort`, {
+      method: "PATCH",
+      body: JSON.stringify({ ids }),
+    }),
+
+  adminDeleteDictItem: (type: string, id: string) =>
+    request<void>(`/api/admin/dicts/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  // Admin: AI 中心（提示词管理）
+  adminListAiPrompts: (params?: { keyword?: string; scene?: string; enabled?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.keyword) q.set("keyword", params.keyword);
+    if (params?.scene) q.set("scene", params.scene);
+    if (params?.enabled != null) q.set("enabled", params.enabled ? "1" : "0");
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[] }>(`/api/admin/ai/prompts${suffix}`).then((r) => r.list);
+  },
+
+  adminCreateAiPrompt: (data: { name: string; scene: string; content: string; enabled?: boolean }) =>
+    request<{ item: any }>(`/api/admin/ai/prompts`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }).then((r) => r.item),
+
+  adminUpdateAiPrompt: (id: string, data: { name?: string; scene?: string; content?: string; enabled?: boolean }) =>
+    request<{ message: string }>(`/api/admin/ai/prompts/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  adminSetAiPromptEnabled: (id: string, enabled: boolean) =>
+    request<{ message: string }>(`/api/admin/ai/prompts/${encodeURIComponent(id)}/enabled`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
+
+  adminDeleteAiPrompt: (id: string) =>
+    request<void>(`/api/admin/ai/prompts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  adminListProducts: (params?: { status?: string; keyword?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.keyword) q.set("keyword", params.keyword);
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[] }>(`/api/admin/products${suffix}`).then((r) => r.list);
+  },
+
+  adminGetProduct: (id: number) =>
+    request<{ item: any }>(`/api/admin/products/${id}`).then((r) => r.item),
+
+  adminUpdateProduct: (
+    id: number,
+    data: {
+      title?: string;
+      description?: string;
+      price?: number | string;
+      image_url?: string;
+      condition?: string;
+      category_id?: string;
+      campus?: string;
+      reject_reason?: string;
+      images?: string[] | string;
+    },
+  ) =>
+    request<{ message: string }>(`/api/admin/products/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  adminSetProductStatus: (id: number, status: "approved" | "down" | "deleted") =>
+    request<{ message: string }>(`/api/admin/products/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
   listCategories: () =>
     request<{
       list: Array<{
@@ -283,6 +489,14 @@ export const api = {
         enabled: boolean;
       }>;
     }>("/api/categories").then((r) => r.list),
+
+  listDicts: (type: string) => {
+    const q = new URLSearchParams();
+    q.set("type", type);
+    return request<{
+      list: Array<{ id: string; dict_type: string; value: string; label: string; sort: number; enabled: boolean }>;
+    }>(`/api/dicts?${q.toString()}`).then((r) => r.list);
+  },
 
   listAnnouncements: () =>
     request<{
@@ -307,20 +521,6 @@ export const api = {
         active: boolean;
       }>;
     }>("/api/banners").then((r) => r.list),
-
-  adminListProducts: (params?: { status?: string; keyword?: string }) => {
-    const q = new URLSearchParams();
-    if (params?.status) q.set("status", params.status);
-    if (params?.keyword) q.set("keyword", params.keyword);
-    const suffix = q.toString() ? `?${q.toString()}` : "";
-    return request<{ list: any[] }>(`/api/admin/products${suffix}`).then((r) => r.list);
-  },
-
-  adminAuditProduct: (id: number, action: "approve" | "reject" | "down", reason?: string) =>
-    request<{ message: string }>(`/api/admin/products/${id}/audit`, {
-      method: "PATCH",
-      body: JSON.stringify({ action, reason }),
-    }),
 
   // 管理端：订单全量管理
   adminListOrders: (params?: { status?: string; keyword?: string }) => {
@@ -409,6 +609,17 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  changeProductStatus: (id: number, status: "up" | "down") =>
+    request<{ message: string }>(`/api/products/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  deleteProduct: (id: number) =>
+    request<void>(`/api/products/${id}`, {
+      method: "DELETE",
+    }),
+
   listFavorites: (userId: number) =>
     request<
       {
@@ -472,6 +683,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  getMyEvaluation: (orderId: number) =>
+    request<{ evaluation: any | null }>(`/api/orders/${orderId}/evaluation`).then((r) => r.evaluation),
 
   // 投诉与反馈
   createComplaint: (data: {
@@ -586,6 +800,11 @@ export const api = {
 
   ossUploadFile: async (file: File, folder = "products") => {
     return uploadViaBackend(file, folder);
+  },
+
+  // Admin: upload banner image (supports OSS or local)
+  adminUploadBannerImage: async (file: File) => {
+    return uploadBannerViaAdmin(file);
   },
 };
 

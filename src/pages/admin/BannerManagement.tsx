@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/assets";
 
 interface BannerItem {
   id: string;
@@ -23,6 +24,7 @@ const BannerManagement = () => {
   const [editBanner, setEditBanner] = useState<BannerItem | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [form, setForm] = useState({ title: "", image: "", link: "" });
+  const [uploading, setUploading] = useState(false);
 
   const refresh = async () => {
     const list = await api.adminListBanners();
@@ -107,7 +109,7 @@ const BannerManagement = () => {
                   <ArrowDown className="h-3 w-3" />
                 </Button>
               </div>
-              <img src={banner.image} alt="" className="h-20 w-36 rounded-lg object-cover shrink-0" />
+              <img src={resolveAssetUrl(banner.image)} alt="" className="h-20 w-36 rounded-lg object-cover shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-foreground">{banner.title}</p>
                 <p className="text-xs text-muted-foreground mt-1">链接：{banner.link}</p>
@@ -144,9 +146,45 @@ const BannerManagement = () => {
               <Input value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="轮播图标题" />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground mb-1 block">图片URL</label>
-              <Input value={form.image} onChange={(e) => setForm((f) => ({ ...f, image: e.target.value }))} placeholder="https://..." />
-              {form.image && <img src={form.image} alt="" className="mt-2 h-24 w-full object-cover rounded-lg" />}
+              <label className="text-sm font-medium text-foreground mb-1 block">轮播图图片</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={form.image}
+                  onChange={(e) => setForm((f) => ({ ...f, image: e.target.value }))}
+                  placeholder="上传后自动填充，或粘贴图片URL"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={uploading}
+                  onClick={() => {
+                    const el = document.getElementById("banner-image-file") as HTMLInputElement | null;
+                    el?.click();
+                  }}
+                >
+                  {uploading ? "上传中..." : "选择图片"}
+                </Button>
+                <input
+                  id="banner-image-file"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploading(true);
+                    try {
+                      const r = await api.adminUploadBannerImage(file);
+                      // 优先存相对路径，避免把 localhost 写进数据库
+                      setForm((f) => ({ ...f, image: r.path || r.url }));
+                    } finally {
+                      setUploading(false);
+                      e.target.value = "";
+                    }
+                  }}
+                />
+              </div>
+              {form.image && <img src={resolveAssetUrl(form.image)} alt="" className="mt-2 h-24 w-full object-cover rounded-lg" />}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground mb-1 block">跳转链接</label>

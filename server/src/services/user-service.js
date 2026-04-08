@@ -1,12 +1,42 @@
-export function buildUserService({ db, hashPasswordMD5 }) {
+export function buildUserService({ db, hashPassword, verifyPassword, smsService }) {
   return {
+    async getMyStats(userId) {
+      const [
+        productRows,
+        favoriteRows,
+        boughtRows,
+        soldRows,
+      ] = await Promise.all([
+        db.query(
+          "SELECT COUNT(*) as count FROM products WHERE owner_id = ? AND status <> 'deleted'",
+          [userId]
+        ),
+        db.query("SELECT COUNT(*) as count FROM favorites WHERE user_id = ?", [userId]),
+        db.query("SELECT COUNT(*) as count FROM orders WHERE buyer_id = ?", [userId]),
+        db.query("SELECT COUNT(*) as count FROM orders WHERE seller_id = ?", [userId]),
+      ]);
+
+      const published = Number(productRows?.[0]?.count || 0);
+      const favorites = Number(favoriteRows?.[0]?.count || 0);
+      const bought = Number(boughtRows?.[0]?.count || 0);
+      const sold = Number(soldRows?.[0]?.count || 0);
+
+      return {
+        stats: {
+          published,
+          favorites,
+          bought,
+          sold,
+          trades: bought + sold,
+        },
+      };
+    },
+
     async updateProfile(meId, body) {
       const fields = {
         nickname: body.nickname,
         avatar: body.avatar,
         gender: body.gender,
-        grade: body.grade,
-        major: body.major,
         bio: body.bio,
       };
 
@@ -35,13 +65,10 @@ export function buildUserService({ db, hashPasswordMD5 }) {
       const user = await db.getById("users", meId);
       if (!user) return { status: 404, body: { message: "用户不存在" } };
 
-      const ok =
-        user.password_hash === "demo" ||
-        user.password_hash === oldPassword ||
-        user.password_hash === hashPasswordMD5(oldPassword);
-      if (!ok) return { status: 401, body: { message: "旧密码不正确" } };
+      const v = await verifyPassword(oldPassword, user.password_hash);
+      if (!v.ok) return { status: 401, body: { message: "旧密码不正确" } };
 
-      await db.update("users", meId, { password_hash: hashPasswordMD5(newPassword) });
+      await db.update("users", meId, { password_hash: await hashPassword(newPassword) });
       return { status: 200, body: { message: "ok" } };
     },
 
@@ -181,6 +208,40 @@ export function buildUserService({ db, hashPasswordMD5 }) {
           isMe: true,
         },
       };
+    },
+
+    async sendChangePhoneCode(meId, newPhone) {
+      if (!smsService) return { status: 500, body: { message: "短信服务未配置" } };
+      const user = await db.getById("users", meId);
+      if (!user) return { status: 404, body: { message: "用户不存在" } };
+
+      const p = String(newPhone || "").trim();
+      if (!p) return { status: 400, body: { message: "newPhone 为必填" } };
+
+      // 新手机号不可被占用
+      const exists = await db.query("SELECT id FROM users WHERE phone = ?", [p]);
+      if (exists.length > 0) return { status: 409, body: { message: "该手机号已被占用" } };
+
+      return smsService.sendCode({ phone: p, scene: "change_phone" });
+    },
+
+    async confirmChangePhone(meId, newPhone, code) {
+      if (!smsService) return { status: 500, body: { message: "短信服务未配置" } };
+      const user = await db.getById("users", meId);
+      if (!user) return { status: 404, body: { message: "用户不存在" } };
+
+      const p = String(newPhone || "").trim();
+      const c = String(code || "").trim();
+      if (!p || !c) return { status: 400, body: { message: "newPhone 和 code 为必填" } };
+
+      const exists = await db.query("SELECT id FROM users WHERE phone = ?", [p]);
+      if (exists.length > 0) return { status: 409, body: { message: "该手机号已被占用" } };
+
+      const v = smsService.verifyCode({ phone: p, scene: "change_phone", code: c });
+      if (!v.ok) return { status: v.status, body: { message: v.message } };
+
+      await db.update("users", meId, { phone: p });
+      return { status: 200, body: { message: "手机号已更新" } };
     },
   };
 }

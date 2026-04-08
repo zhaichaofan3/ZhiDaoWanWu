@@ -10,22 +10,30 @@ import { setToken, setMe } from "@/lib/auth";
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
-  const [account, setAccount] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const getErrorMessage = (e: unknown) => {
+    if (e && typeof e === "object" && "message" in e) {
+      const msg = (e as { message?: unknown }).message;
+      if (typeof msg === "string" && msg.trim()) return msg;
+    }
+    return "登录失败";
+  };
+
   const onLogin = async () => {
-    const a = account.trim();
-    if (!a || !password) return;
+    const p = phone.trim();
+    if (!p || !password) return;
     setLoading(true);
     try {
-      const resp = await api.login({ account: a, password });
+      const resp = await api.login({ phone: p, password });
       setToken(resp.token);
-      setMe({ id: resp.user.id, nickname: resp.user.nickname, role: resp.user.role, studentId: resp.user.studentId });
+      setMe({ id: resp.user.id, nickname: resp.user.nickname, role: resp.user.role });
       navigate(resp.user.role === "admin" ? "/admin" : "/", { replace: true });
-    } catch (e: any) {
-      alert(e?.message || "登录失败");
+    } catch (e: unknown) {
+      alert(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -35,17 +43,26 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xl mb-3">
-            校
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">欢迎回来</h1>
-          <p className="text-sm text-muted-foreground mt-1">登录校园二手交易平台</p>
+          <img
+            src="/logos/logo_with_slogan_black.svg"
+            alt="校园二手交易平台"
+            className="mx-auto h-16 w-auto mb-3 dark:hidden"
+            loading="eager"
+            decoding="async"
+          />
+          <img
+            src="/logos/logo_with_slogan_white.svg"
+            alt="校园二手交易平台"
+            className="mx-auto h-16 w-auto mb-3 hidden dark:block"
+            loading="eager"
+            decoding="async"
+          />
         </div>
 
         <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="account">学号 / 手机号</Label>
-            <Input id="account" placeholder="请输入学号或手机号" value={account} onChange={(e) => setAccount(e.target.value)} />
+            <Label htmlFor="phone">手机号</Label>
+            <Input id="phone" placeholder="请输入手机号" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
 
           <div className="space-y-2">
@@ -81,7 +98,7 @@ const Login = () => {
             className="w-full"
             size="lg"
             onClick={onLogin}
-            disabled={loading || !account.trim() || !password}
+            disabled={loading || !phone.trim() || !password}
           >
             {loading ? "登录中..." : "登录"}
           </Button>

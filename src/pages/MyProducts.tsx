@@ -7,12 +7,11 @@ import { Edit, ArrowUpDown, Trash2, Eye, Heart, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const statusColorMap: Record<string, string> = {
-  "审核中": "bg-warning/10 text-warning border-warning/20",
   "已上架": "bg-success/10 text-success border-success/20",
   "已下架": "bg-muted text-muted-foreground",
-  "已驳回": "bg-destructive/10 text-destructive border-destructive/20",
   "已售出": "bg-primary/10 text-primary border-primary/20",
 };
 
@@ -41,10 +40,6 @@ const MyProducts = () => {
             status:
               p.status === "approved"
                 ? "已上架"
-                : p.status === "pending"
-                ? "审核中"
-                : p.status === "rejected"
-                ? "已驳回"
                 : p.status === "completed"
                 ? "已售出"
                 : "已下架",
@@ -78,7 +73,7 @@ const MyProducts = () => {
 
           {/* Filter Tabs */}
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-            {["全部", "已上架", "审核中", "已下架", "已驳回", "已售出"].map((s) => (
+            {["全部", "已上架", "已下架", "已售出"].map((s) => (
               <Button
                 key={s}
                 variant={s === statusFilter ? "default" : "outline"}
@@ -99,7 +94,11 @@ const MyProducts = () => {
               filteredProducts.map((product) => (
               <div key={product.id} className="rounded-lg border border-border bg-card p-4 flex gap-4">
                 <Link to={`/product/${product.id}`} className="shrink-0">
-                  <img src={product.images[0]} alt="" className="h-20 w-20 rounded-md object-cover" />
+                  <img
+                    src={resolveAssetUrl(product.images?.[0])}
+                    alt=""
+                    className="h-20 w-20 rounded-md object-cover bg-muted"
+                  />
                 </Link>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">

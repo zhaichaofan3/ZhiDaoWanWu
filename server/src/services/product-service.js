@@ -38,7 +38,7 @@ export function buildProductService({ db }) {
         category_id,
         campus,
         owner_id: ownerId,
-        status: "pending",
+        status: "approved",
         created_at: new Date().toISOString(),
         views: 0,
         favorites: 0,
@@ -52,9 +52,7 @@ export function buildProductService({ db }) {
       const product = await db.getById("products", id);
       if (!product) return { status: 404, body: { message: "商品不存在" } };
       if (product.owner_id !== userId) return { status: 403, body: { message: "无权限修改此商品" } };
-      if (product.status === "approved" || product.status === "pending") {
-        return { status: 400, body: { message: "仅可编辑审核驳回、已下架的商品" } };
-      }
+      if (product.status === "deleted") return { status: 400, body: { message: "商品已删除" } };
 
       const { title, description, price, image_url, condition, category_id, campus } = payload ?? {};
       const updateData = {};
@@ -68,7 +66,8 @@ export function buildProductService({ db }) {
       if (condition != null) updateData.condition = condition;
       if (category_id != null) updateData.category_id = category_id;
       if (campus != null) updateData.campus = campus;
-      updateData.status = "pending";
+      // 无审核：编辑后保持/恢复为上架状态
+      updateData.status = "approved";
       updateData.updated_at = new Date().toISOString();
 
       await db.update("products", id, updateData);
@@ -79,8 +78,9 @@ export function buildProductService({ db }) {
       const product = await db.getById("products", id);
       if (!product) return { status: 404, body: { message: "商品不存在" } };
       if (product.owner_id !== userId) return { status: 403, body: { message: "无权限修改此商品" } };
+      if (product.status === "deleted") return { status: 400, body: { message: "商品已删除" } };
 
-      if (status === "up" && (product.status === "approved" || product.status === "pending")) {
+      if (status === "up") {
         await db.update("products", id, {
           status: "approved",
           updated_at: new Date().toISOString(),
@@ -88,7 +88,7 @@ export function buildProductService({ db }) {
         return { status: 200, body: { message: "ok" } };
       }
 
-      if (status === "down" && product.status === "approved") {
+      if (status === "down") {
         const checkSql =
           "SELECT * FROM orders WHERE product_id = ? AND status NOT IN ('completed', 'cancelled')";
         const orders = await db.query(checkSql, [id]);
@@ -109,9 +109,7 @@ export function buildProductService({ db }) {
       const product = await db.getById("products", id);
       if (!product) return { status: 404, body: { message: "商品不存在" } };
       if (product.owner_id !== userId) return { status: 403, body: { message: "无权限删除此商品" } };
-      if (product.status === "approved" || product.status === "pending") {
-        return { status: 400, body: { message: "仅可删除已下架、审核驳回的商品" } };
-      }
+      if (product.status === "deleted") return { status: 400, body: { message: "商品已删除" } };
 
       const checkSql =
         "SELECT * FROM orders WHERE product_id = ? AND status NOT IN ('completed', 'cancelled')";
@@ -122,7 +120,7 @@ export function buildProductService({ db }) {
 
       const deleteFavoritesSql = "DELETE FROM favorites WHERE product_id = ?";
       await db.query(deleteFavoritesSql, [id]);
-      await db.delete("products", id);
+      await db.update("products", id, { status: "deleted", updated_at: new Date().toISOString() });
       return { status: 204, body: null };
     },
 

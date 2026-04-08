@@ -8,7 +8,7 @@ export function buildTradeService({ db }) {
 
       const product = await db.getById("products", product_id);
       if (!product) return { status: 404, body: { message: "商品不存在" } };
-      if (product.status !== "approved") return { status: 400, body: { message: "商品不可购买" } };
+      if (product.status === "down" || product.status === "deleted") return { status: 400, body: { message: "商品不可购买" } };
       if (product.owner_id === buyerId) return { status: 400, body: { message: "不能购买自己的商品" } };
 
       const checkSql = "SELECT * FROM orders WHERE product_id = ? AND status NOT IN ('completed', 'cancelled')";
@@ -108,6 +108,21 @@ export function buildTradeService({ db }) {
           seller: { id: order.seller_id, nickname: order.seller_nickname, avatar: order.seller_avatar },
         },
       };
+    },
+
+    async getMyEvaluation(orderId, userId) {
+      const id = Number(orderId);
+      if (!Number.isFinite(id) || id <= 0) return { status: 400, body: { message: "无效的订单ID" } };
+
+      const order = await db.getById("orders", id);
+      if (!order) return { status: 404, body: { message: "订单不存在" } };
+      if (order.buyer_id !== userId && order.seller_id !== userId) {
+        return { status: 403, body: { message: "无权限查看此订单评价" } };
+      }
+
+      const rows = await db.query("SELECT * FROM evaluations WHERE order_id = ? AND user_id = ? LIMIT 1", [id, userId]);
+      const evaluation = rows?.[0] || null;
+      return { status: 200, body: { evaluation } };
     },
 
     async updateOrderStatus(id, userId, status) {

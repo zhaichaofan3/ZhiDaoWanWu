@@ -8,10 +8,7 @@ export type Me = {
   nickname: string;
   avatar?: string;
   phone?: string;
-  studentId?: string;
   gender?: "male" | "female" | "other";
-  grade?: string;
-  major?: string;
   bio?: string;
   role: AuthRole;
 };

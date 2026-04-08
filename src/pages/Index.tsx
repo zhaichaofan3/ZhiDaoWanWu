@@ -47,15 +47,13 @@ const Index = () => {
             nickname: p.owner_name || "未知卖家",
             avatar: ""
           },
-          status: p.status === "approved" ? "已上架" : p.status === "pending" ? "审核中" : "已下架",
+          status: p.status === "down" || p.status === "deleted" ? "已下架" : "已上架",
           views: p.views || 0,
           favorites: p.favorites || 0,
           campus: p.campus || "",
           createdAt: p.created_at || new Date().toISOString().split('T')[0]
         }));
-        // 只显示已上架的商品
-        const approvedProducts = formattedProducts.filter(p => p.status === "已上架");
-        setProducts(approvedProducts.slice(0, 8));
+        setProducts(formattedProducts.filter(p => p.status === "已上架").slice(0, 8));
       })
       .catch(() => setProducts([]))
       .finally(() => setLoading(false));

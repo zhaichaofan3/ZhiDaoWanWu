@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const HeroCarousel = () => {
   const [current, setCurrent] = useState(0);
@@ -37,7 +38,7 @@ const HeroCarousel = () => {
           >
             <Link to={banner.link || "/products"}>
               <img
-                src={banner.image}
+                src={resolveAssetUrl(banner.image)}
                 alt={banner.title}
                 className="h-full w-full object-cover"
               />

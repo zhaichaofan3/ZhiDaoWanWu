@@ -5,48 +5,326 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
-  User, Settings, MapPin, Package, Heart, ShoppingCart, Lock, ChevronRight, LogOut,
+  Settings,
+  MapPin,
+  Package,
+  Heart,
+  ShoppingCart,
+  Lock,
+  LogOut,
+  ArrowUpDown,
+  Trash2,
+  Eye,
+  Plus,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import type { Me } from "@/lib/auth";
 import { clearAuth } from "@/lib/auth";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Address, Order, Product } from "@/types";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const Profile = () => {
   const navigate = useNavigate();
   const [me, setMeState] = useState<Me | null>(null);
   const [saving, setSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [stats, setStats] = useState<{
+    published: number;
+    favorites: number;
+    bought: number;
+    sold: number;
+    trades: number;
+  } | null>(null);
+
+  // tabs data
+  const [myProducts, setMyProducts] = useState<any[]>([]);
+  const [myProductsLoading, setMyProductsLoading] = useState(false);
+  const [myProductsStatusFilter, setMyProductsStatusFilter] = useState("全部");
+
+  const [favProducts, setFavProducts] = useState<Product[]>([]);
+  const [favLoading, setFavLoading] = useState(false);
+
+  const [buyerOrders, setBuyerOrders] = useState<Order[]>([]);
+  const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderStatusFilter, setOrderStatusFilter] = useState("全部");
+
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [addrForm, setAddrForm] = useState({
+    contact: "",
+    phone: "",
+    campus: "东校区",
+    building: "",
+    detail: "",
+  });
+
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  const [newPhone, setNewPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [sending, setSending] = useState(false);
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [coolDownUntil, setCoolDownUntil] = useState<number>(0);
 
   useEffect(() => {
     api
       .me()
-      .then((u) => setMeState(u as unknown as Me))
-      .catch(() => setMeState(null));
+      .then((u) => {
+        const next = u as unknown as Me;
+        setMeState(next);
+        return next;
+      })
+      .then(async (u) => {
+        // 优先使用后端聚合统计；失败时退化为前端计算，避免页面一直显示 "-"
+        try {
+          const s = await api.meStats();
+          setStats(s);
+          return;
+        } catch {
+          // ignore
+        }
+
+        try {
+          const [favorites, products, orders] = await Promise.all([
+            api.listFavorites(u.id),
+            api.listProducts(),
+            api.listOrders(u.id),
+          ]);
+          const published = products.filter((p: any) => Number(p.owner_id) === Number(u.id) && p.status !== "deleted")
+            .length;
+          const favCount = favorites.length;
+          const buyerCount = orders.filter((o: any) => String(o.buyer_id) === String(u.id) || String(o.buyer?.id) === String(u.id)).length;
+          const sellerCount = orders.filter((o: any) => String(o.seller_id) === String(u.id) || String(o.seller?.id) === String(u.id)).length;
+          setStats({
+            published,
+            favorites: favCount,
+            bought: buyerCount,
+            sold: sellerCount,
+            trades: buyerCount + sellerCount,
+          });
+        } catch {
+          setStats(null);
+        }
+      })
+      .catch(() => {
+        setMeState(null);
+        setStats(null);
+      });
   }, []);
 
   const user = me
     ? {
         nickname: me.nickname,
         avatar: me.avatar,
-        studentId: me.studentId,
-        grade: me.grade,
-        major: me.major,
         bio: me.bio,
         phone: me.phone,
       }
     : null;
 
-  const menuItems = [
-    { icon: Package, label: "我的发布", path: "/my-products", count: 5 },
-    { icon: Heart, label: "我的收藏", path: "/favorites", count: 12 },
-    { icon: ShoppingCart, label: "我买到的", path: "/orders/buy", count: 3 },
-    { icon: ShoppingCart, label: "我卖出的", path: "/orders/sell", count: 2 },
-    { icon: MapPin, label: "收货地址", path: "/addresses", count: undefined },
-    { icon: Lock, label: "修改密码", path: "/change-password", count: undefined },
-    { icon: Settings, label: "账号设置", path: "/settings", count: undefined },
-  ];
+  const refreshStats = async () => {
+    try {
+      const s = await api.meStats();
+      setStats(s);
+    } catch {
+      // ignore
+    }
+  };
+
+  const coolDownText = useMemo(() => {
+    if (Date.now() >= coolDownUntil) return null;
+    return `${Math.ceil((coolDownUntil - Date.now()) / 1000)}s`;
+  }, [coolDownUntil]);
+
+  const statusColorMap: Record<string, string> = {
+    已上架: "bg-success/10 text-success border-success/20",
+    已下架: "bg-muted text-muted-foreground",
+    已售出: "bg-primary/10 text-primary border-primary/20",
+  };
+
+  const orderStatuses = ["全部", "待确认", "待交付", "已完成", "已取消"];
+  const orderStatusText: Record<string, string> = {
+    pending: "待确认",
+    confirmed: "待交付",
+    completed: "已完成",
+    cancelled: "已取消",
+  };
+  const orderStatusVariant = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "secondary";
+      case "confirmed":
+        return "default";
+      case "completed":
+        return "outline";
+      case "cancelled":
+        return "destructive";
+      default:
+        return "secondary";
+    }
+  };
+
+  const ensureMyProductsLoaded = async () => {
+    if (!me || myProductsLoading || myProducts.length > 0) return;
+    setMyProductsLoading(true);
+    try {
+      const products = await api.listProducts();
+      const mine = products
+        .filter((p: any) => Number(p.owner_id) === Number(me.id))
+        .map((p: any) => ({
+          id: Number(p.id),
+          title: p.title,
+          images: p.images || (p.image_url ? [p.image_url] : []),
+          price: Number(p.price || 0),
+          views: p.views || 0,
+          favorites: p.favorites || 0,
+          createdAt: p.created_at || "",
+          rawStatus: p.status,
+          status:
+            p.status === "approved" ? "已上架" : p.status === "completed" ? "已售出" : "已下架",
+        }));
+      setMyProducts(mine);
+    } catch {
+      setMyProducts([]);
+    } finally {
+      setMyProductsLoading(false);
+    }
+  };
+
+  const ensureFavoritesLoaded = async () => {
+    if (!me || favLoading || favProducts.length > 0) return;
+    setFavLoading(true);
+    try {
+      const [favorites, products] = await Promise.all([api.listFavorites(me.id), api.listProducts()]);
+      const favSet = new Set(favorites.map((f) => String(f.product_id)));
+      const mapped: Product[] = products
+        .filter((p: any) => favSet.has(String(p.id)))
+        .map((p: any) => ({
+          id: String(p.id),
+          title: p.title,
+          description: p.description || "",
+          price: Number(p.price || 0),
+          originalPrice: p.originalPrice ? Number(p.originalPrice) : undefined,
+          condition: p.condition || "轻微使用",
+          images: p.images || (p.image_url ? [p.image_url] : []),
+          category: p.category || "其他",
+          categoryId: p.category_id || "",
+          seller: {
+            id: String(p.owner_id || ""),
+            nickname: p.owner_name || "未知卖家",
+            avatar: "",
+          },
+          status: p.status === "approved" ? "已上架" : "已下架",
+          views: p.views || 0,
+          favorites: p.favorites || 0,
+          campus: p.campus || "",
+          createdAt: p.created_at || "",
+          isFavorited: true,
+        }));
+      setFavProducts(mapped);
+    } catch {
+      setFavProducts([]);
+    } finally {
+      setFavLoading(false);
+    }
+  };
+
+  const ensureOrdersLoaded = async () => {
+    if (!me || ordersLoading || buyerOrders.length + sellerOrders.length > 0) return;
+    setOrdersLoading(true);
+    try {
+      const response = await api.listOrders(me.id);
+      const formattedOrders: Order[] = response.map((o: any) => ({
+        id: o.id.toString(),
+        orderNo:
+          o.orderNo ||
+          `TX${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${String(o.id).padStart(3, "0")}`,
+        product: {
+          id: o.product?.id?.toString() || "",
+          title: o.product?.title || o.title || "",
+          images: o.product?.images || (o.product?.image_url ? [o.product.image_url] : []),
+          price: o.product?.price || o.price || 0,
+          description: "",
+          originalPrice: 0,
+          condition: "轻微使用",
+          category: "",
+          categoryId: "",
+          seller: { id: "", nickname: "", avatar: "" },
+          status: "已上架",
+          views: 0,
+          favorites: 0,
+          campus: "",
+          createdAt: "",
+        },
+        buyer: {
+          id: o.buyer?.id?.toString() || o.buyer_id?.toString() || "",
+          nickname: o.buyer?.nickname || "未知买家",
+          avatar: o.buyer?.avatar || "",
+        },
+        seller: {
+          id: o.seller?.id?.toString() || o.seller_id?.toString() || "",
+          nickname: o.seller?.nickname || "未知卖家",
+          avatar: o.seller?.avatar || "",
+        },
+        status: o.status,
+        amount: o.amount || o.price || 0,
+        createdAt: o.created_at || new Date().toISOString().split("T")[0],
+        deliveryAddress: o.deliveryAddress || "",
+        deliveryTime: o.deliveryTime || "",
+        timeline: o.timeline || [],
+      }));
+      setBuyerOrders(formattedOrders.filter((o) => o.buyer.id === me.id.toString()));
+      setSellerOrders(formattedOrders.filter((o) => o.seller.id === me.id.toString()));
+    } catch {
+      setBuyerOrders([]);
+      setSellerOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const refreshAddresses = async () => {
+    const list = await api.listAddresses();
+    setAddresses(list as Address[]);
+  };
+
+  const ensureAddressesLoaded = async () => {
+    if (addressesLoading || addresses.length > 0) return;
+    setAddressesLoading(true);
+    try {
+      await refreshAddresses();
+    } catch {
+      setAddresses([]);
+    } finally {
+      setAddressesLoading(false);
+    }
+  };
+
+  const filteredMyProducts = useMemo(() => {
+    if (myProductsStatusFilter === "全部") return myProducts;
+    return myProducts.filter((p) => p.status === myProductsStatusFilter);
+  }, [myProducts, myProductsStatusFilter]);
+
+  const filterOrdersByStatus = (orders: Order[]) => {
+    if (orderStatusFilter === "全部") return orders;
+    const statusMap: Record<string, string> = {
+      待确认: "pending",
+      待交付: "confirmed",
+      已完成: "completed",
+      已取消: "cancelled",
+    };
+    return orders.filter((o) => o.status === statusMap[orderStatusFilter]);
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -54,9 +332,35 @@ const Profile = () => {
       <main className="flex-1">
         <div className="container max-w-3xl py-4 md:py-6">
           <Tabs defaultValue="info">
-            <TabsList className="w-full justify-start mb-6">
-              <TabsTrigger value="info">个人信息</TabsTrigger>
-              <TabsTrigger value="menu">功能菜单</TabsTrigger>
+            <TabsList className="w-full justify-start mb-6 flex-wrap h-auto">
+              <TabsTrigger value="info" className="gap-1.5">
+                <Settings className="h-4 w-4" /> 个人信息
+              </TabsTrigger>
+              <TabsTrigger value="my-products" className="gap-1.5" onClick={ensureMyProductsLoaded}>
+                <Package className="h-4 w-4" /> 我的发布
+                <span className="text-xs text-muted-foreground">({stats ? stats.published : "-"})</span>
+              </TabsTrigger>
+              <TabsTrigger value="favorites" className="gap-1.5" onClick={ensureFavoritesLoaded}>
+                <Heart className="h-4 w-4" /> 我的收藏
+                <span className="text-xs text-muted-foreground">({stats ? stats.favorites : "-"})</span>
+              </TabsTrigger>
+              <TabsTrigger value="bought" className="gap-1.5" onClick={ensureOrdersLoaded}>
+                <ShoppingCart className="h-4 w-4" /> 我买到的
+                <span className="text-xs text-muted-foreground">({stats ? stats.bought : "-"})</span>
+              </TabsTrigger>
+              <TabsTrigger value="sold" className="gap-1.5" onClick={ensureOrdersLoaded}>
+                <ShoppingCart className="h-4 w-4" /> 我卖出的
+                <span className="text-xs text-muted-foreground">({stats ? stats.sold : "-"})</span>
+              </TabsTrigger>
+              <TabsTrigger value="addresses" className="gap-1.5" onClick={ensureAddressesLoaded}>
+                <MapPin className="h-4 w-4" /> 收货地址
+              </TabsTrigger>
+              <TabsTrigger value="change-password" className="gap-1.5">
+                <Lock className="h-4 w-4" /> 修改密码
+              </TabsTrigger>
+              <TabsTrigger value="change-phone" className="gap-1.5">
+                <Settings className="h-4 w-4" /> 更换手机号
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="info">
@@ -64,11 +368,60 @@ const Profile = () => {
               <div className="rounded-xl border border-border bg-card p-6 mb-6">
                 {user ? (
                   <div className="flex items-center gap-4 mb-6">
-                    <img src={user.avatar || ""} alt="" className="h-16 w-16 rounded-full bg-muted" />
+                    <div className="shrink-0">
+                      <img
+                        src={resolveAssetUrl(user.avatar) || ""}
+                        alt=""
+                        className="h-16 w-16 rounded-full bg-muted object-cover"
+                      />
+                    </div>
                     <div>
                       <h2 className="text-lg font-bold text-foreground">{user.nickname}</h2>
-                      <p className="text-sm text-muted-foreground">{user.grade} · {user.major}</p>
                       <p className="text-xs text-muted-foreground mt-1">{user.bio}</p>
+                    </div>
+                    <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={avatarUploading}
+                        onClick={() => {
+                          const el = document.getElementById("profile-avatar-file") as HTMLInputElement | null;
+                          el?.click();
+                        }}
+                      >
+                        {avatarUploading ? "上传中..." : "更换头像"}
+                      </Button>
+                      <input
+                        id="profile-avatar-file"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setAvatarUploading(true);
+                          try {
+                            const r = await api.ossUploadFile(file, "avatars");
+                            const avatar = r.path || r.url;
+                            // 先更新本地态，再点“保存修改”会一起提交；这里也直接提交一次，减少用户困惑
+                            setMeState((prev) => (prev ? { ...prev, avatar } : prev));
+                            await api.updateProfile({
+                              nickname: user.nickname,
+                              avatar,
+                              bio: user.bio,
+                            });
+                            await api.me().then((u) => setMeState(u as unknown as Me));
+                            alert("头像已更新");
+                          } catch (err: any) {
+                            console.error(err);
+                            alert(err?.message || "头像上传失败");
+                          } finally {
+                            setAvatarUploading(false);
+                            e.target.value = "";
+                          }
+                        }}
+                      />
                     </div>
                   </div>
                 ) : (
@@ -76,9 +429,21 @@ const Profile = () => {
                 )}
 
                 <div className="grid grid-cols-3 gap-4 text-center py-4 border-t border-b border-border">
-                  <div><span className="text-lg font-bold text-foreground">5</span><br /><span className="text-xs text-muted-foreground">发布</span></div>
-                  <div><span className="text-lg font-bold text-foreground">12</span><br /><span className="text-xs text-muted-foreground">收藏</span></div>
-                  <div><span className="text-lg font-bold text-foreground">8</span><br /><span className="text-xs text-muted-foreground">交易</span></div>
+                  <div>
+                    <span className="text-lg font-bold text-foreground">{stats ? stats.published : "-"}</span>
+                    <br />
+                    <span className="text-xs text-muted-foreground">发布</span>
+                  </div>
+                  <div>
+                    <span className="text-lg font-bold text-foreground">{stats ? stats.favorites : "-"}</span>
+                    <br />
+                    <span className="text-xs text-muted-foreground">收藏</span>
+                  </div>
+                  <div>
+                    <span className="text-lg font-bold text-foreground">{stats ? stats.trades : "-"}</span>
+                    <br />
+                    <span className="text-xs text-muted-foreground">交易</span>
+                  </div>
                 </div>
               </div>
 
@@ -95,16 +460,6 @@ const Profile = () => {
                     <Input id="phone" value={user?.phone || ""} disabled />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="grade">年级</Label>
-                    <Input id="grade" value={user?.grade || ""} onChange={(e) => setMeState((prev) => (prev ? { ...prev, grade: e.target.value } : prev))} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="major">专业</Label>
-                    <Input id="major" value={user?.major || ""} onChange={(e) => setMeState((prev) => (prev ? { ...prev, major: e.target.value } : prev))} />
-                  </div>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="bio">个人简介</Label>
                   <Textarea id="bio" value={user?.bio || ""} onChange={(e) => setMeState((prev) => (prev ? { ...prev, bio: e.target.value } : prev))} rows={3} maxLength={100} />
@@ -118,10 +473,9 @@ const Profile = () => {
                       await api.updateProfile({
                         nickname: user.nickname,
                         avatar: user.avatar,
-                        grade: user.grade,
-                        major: user.major,
                         bio: user.bio,
                       });
+                      await refreshStats();
                       alert("保存成功");
                     } catch (e: any) {
                       alert(e?.message || "保存失败");
@@ -133,34 +487,481 @@ const Profile = () => {
                   保存修改
                 </Button>
               </div>
-            </TabsContent>
 
-            <TabsContent value="menu">
-              <div className="rounded-xl border border-border bg-card overflow-hidden">
-                {menuItems.map((item, i) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`flex items-center gap-3 px-4 py-3.5 hover:bg-muted/50 transition-colors ${i > 0 ? "border-t border-border" : ""}`}
-                  >
-                    <item.icon className="h-5 w-5 text-muted-foreground" />
-                    <span className="flex-1 text-sm text-foreground">{item.label}</span>
-                    {item.count !== undefined && (
-                      <span className="text-xs text-muted-foreground">{item.count}</span>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  </Link>
-                ))}
-                <button
-                  className="flex items-center gap-3 px-4 py-3.5 hover:bg-muted/50 transition-colors border-t border-border w-full text-left"
+              <div className="rounded-xl border border-border bg-card p-6 mt-6">
+                <Button
+                  variant="destructive"
+                  className="w-full"
                   onClick={() => {
                     clearAuth();
                     navigate("/login", { replace: true });
                   }}
                 >
-                  <LogOut className="h-5 w-5 text-destructive" />
-                  <span className="text-sm text-destructive">退出登录</span>
-                </button>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  退出登录
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="my-products">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-foreground">我的发布</h2>
+                <Button size="sm" className="gap-1.5" onClick={() => navigate("/publish")}>
+                  <Plus className="h-4 w-4" /> 发布闲置
+                </Button>
+              </div>
+
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+                {["全部", "已上架", "已下架", "已售出"].map((s) => (
+                  <Button
+                    key={s}
+                    variant={s === myProductsStatusFilter ? "default" : "outline"}
+                    size="sm"
+                    className="shrink-0 h-7 text-xs"
+                    onClick={() => setMyProductsStatusFilter(s)}
+                  >
+                    {s}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                {myProductsLoading ? (
+                  <div className="text-center py-16 text-muted-foreground">加载中...</div>
+                ) : filteredMyProducts.length === 0 ? (
+                  <div className="text-center py-16 text-muted-foreground">暂无发布记录</div>
+                ) : (
+                  filteredMyProducts.map((product) => (
+                    <div key={product.id} className="rounded-lg border border-border bg-card p-4 flex gap-4">
+                      <div className="shrink-0">
+                        <img
+                          src={resolveAssetUrl(product.images?.[0])}
+                          alt=""
+                          className="h-20 w-20 rounded-md object-cover bg-muted"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-sm font-medium text-foreground line-clamp-1">{product.title}</h3>
+                          <Badge
+                            variant="outline"
+                            className={`shrink-0 text-xs ${statusColorMap[product.status]}`}
+                          >
+                            {product.status}
+                          </Badge>
+                        </div>
+                        <p className="text-lg font-bold text-destructive mt-1">¥{product.price}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-0.5">
+                            <Eye className="h-3 w-3" />
+                            {product.views}
+                          </span>
+                          <span className="flex items-center gap-0.5">
+                            <Heart className="h-3 w-3" />
+                            {product.favorites}
+                          </span>
+                          <span>{product.createdAt}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="上/下架"
+                          disabled={product.status === "已售出"}
+                          onClick={async () => {
+                            const next = product.status === "已上架" ? "down" : "up";
+                            try {
+                              await api.changeProductStatus?.(product.id, next);
+                              const nextStatus = next === "up" ? "已上架" : "已下架";
+                              setMyProducts((list) =>
+                                list.map((p) => (p.id === product.id ? { ...p, status: nextStatus } : p))
+                              );
+                              await refreshStats();
+                            } catch (e: any) {
+                              alert(e?.message || "操作失败");
+                            }
+                          }}
+                        >
+                          <ArrowUpDown className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive"
+                          title="删除"
+                          onClick={async () => {
+                            if (!confirm("确认删除该商品？")) return;
+                            try {
+                              await api.deleteProduct?.(product.id);
+                              setMyProducts((list) => list.filter((p) => p.id !== product.id));
+                              await refreshStats();
+                            } catch (e: any) {
+                              alert(e?.message || "删除失败");
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="favorites">
+              <h2 className="text-lg font-bold text-foreground mb-4">我的收藏</h2>
+              {favLoading ? (
+                <div className="text-center py-16 text-muted-foreground">加载中...</div>
+              ) : favProducts.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">还没有收藏商品</div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                  {favProducts.map((p) => (
+                    <Card key={p.id} className="overflow-hidden">
+                      <CardContent className="p-0">
+                        <img
+                          src={resolveAssetUrl(p.images?.[0])}
+                          alt=""
+                          className="h-28 w-full object-cover bg-muted"
+                        />
+                        <div className="p-3 space-y-1.5">
+                          <div className="text-sm font-medium text-foreground line-clamp-1">{p.title}</div>
+                          <div className="text-sm font-bold text-destructive">¥{p.price}</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="bought">
+              <h2 className="text-lg font-bold text-foreground mb-4">我买到的</h2>
+              <div className="flex gap-1 mb-3 flex-wrap">
+                {orderStatuses.map((s) => (
+                  <Button
+                    key={s}
+                    variant={orderStatusFilter === s ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setOrderStatusFilter(s)}
+                  >
+                    {s}
+                  </Button>
+                ))}
+              </div>
+              <OrderList
+                orders={filterOrdersByStatus(buyerOrders)}
+                loading={ordersLoading}
+                statusText={orderStatusText}
+                statusVariant={orderStatusVariant}
+                onOpen={(id) => navigate(`/order/${id}`)}
+              />
+            </TabsContent>
+
+            <TabsContent value="sold">
+              <h2 className="text-lg font-bold text-foreground mb-4">我卖出的</h2>
+              <div className="flex gap-1 mb-3 flex-wrap">
+                {orderStatuses.map((s) => (
+                  <Button
+                    key={s}
+                    variant={orderStatusFilter === s ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setOrderStatusFilter(s)}
+                  >
+                    {s}
+                  </Button>
+                ))}
+              </div>
+              <OrderList
+                orders={filterOrdersByStatus(sellerOrders)}
+                loading={ordersLoading}
+                statusText={orderStatusText}
+                statusVariant={orderStatusVariant}
+                onOpen={(id) => navigate(`/order/${id}`)}
+              />
+            </TabsContent>
+
+            <TabsContent value="addresses">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-foreground">收货地址</h2>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button size="sm" className="gap-1.5">
+                      <Plus className="h-4 w-4" /> 新增地址
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>新增收货地址</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 pt-2">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>联系人</Label>
+                          <Input
+                            placeholder="收货人姓名"
+                            value={addrForm.contact}
+                            onChange={(e) => setAddrForm((f) => ({ ...f, contact: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>手机号</Label>
+                          <Input
+                            placeholder="联系电话"
+                            value={addrForm.phone}
+                            onChange={(e) => setAddrForm((f) => ({ ...f, phone: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label>校区</Label>
+                          <Select
+                            value={addrForm.campus}
+                            onValueChange={(v) => setAddrForm((f) => ({ ...f, campus: v }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="选择校区" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="东校区">东校区</SelectItem>
+                              <SelectItem value="西校区">西校区</SelectItem>
+                              <SelectItem value="南校区">南校区</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>楼栋</Label>
+                          <Input
+                            placeholder="如：6号宿舍楼"
+                            value={addrForm.building}
+                            onChange={(e) => setAddrForm((f) => ({ ...f, building: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>详细地址</Label>
+                        <Input
+                          placeholder="如：A503"
+                          value={addrForm.detail}
+                          onChange={(e) => setAddrForm((f) => ({ ...f, detail: e.target.value }))}
+                        />
+                      </div>
+                      <Button
+                        className="w-full"
+                        disabled={addressesLoading}
+                        onClick={async () => {
+                          const isDefault = addresses.length === 0;
+                          try {
+                            await api.addAddress({
+                              contact: addrForm.contact,
+                              phone: addrForm.phone,
+                              campus: addrForm.campus,
+                              building: addrForm.building,
+                              detail: addrForm.detail,
+                              isDefault,
+                            });
+                            setAddrForm({ contact: "", phone: "", campus: "东校区", building: "", detail: "" });
+                            await refreshAddresses();
+                          } catch (e: any) {
+                            alert(e?.message || "保存失败");
+                          }
+                        }}
+                      >
+                        保存地址
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+
+              <div className="space-y-3">
+                {addressesLoading ? (
+                  <div className="text-center py-12 text-muted-foreground">加载中...</div>
+                ) : addresses.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">暂无收货地址，请添加</div>
+                ) : (
+                  addresses.map((addr) => (
+                    <div
+                      key={String(addr.id)}
+                      className={`rounded-lg border bg-card p-4 ${
+                        addr.isDefault ? "border-primary" : "border-border"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <MapPin
+                            className={`h-5 w-5 mt-0.5 shrink-0 ${
+                              addr.isDefault ? "text-primary" : "text-muted-foreground"
+                            }`}
+                          />
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-foreground">{addr.contact}</span>
+                              <span className="text-sm text-muted-foreground">{addr.phone}</span>
+                              {addr.isDefault && (
+                                <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                  默认
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {addr.campus} · {addr.building} · {addr.detail}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-1">
+                          {!addr.isDefault && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs h-7"
+                              onClick={async () => {
+                                await api.setDefaultAddress(Number(addr.id));
+                                await refreshAddresses();
+                              }}
+                            >
+                              设为默认
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive"
+                            onClick={async () => {
+                              if (!confirm("确认删除该地址？")) return;
+                              await api.deleteAddress(Number(addr.id));
+                              await refreshAddresses();
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="change-password">
+              <h2 className="text-lg font-bold text-foreground mb-4">修改密码</h2>
+              <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="oldPassword">原密码</Label>
+                  <Input
+                    id="oldPassword"
+                    type="password"
+                    placeholder="请输入原密码"
+                    value={oldPassword}
+                    onChange={(e) => setOldPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">新密码</Label>
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    placeholder="8位以上，包含数字和字母"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">确认新密码</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="请再次输入新密码"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={passwordLoading}
+                  onClick={async () => {
+                    if (newPassword !== confirmPassword) return alert("两次新密码不一致");
+                    if (!oldPassword || !newPassword) return;
+                    setPasswordLoading(true);
+                    try {
+                      await api.updatePassword({ oldPassword, newPassword });
+                      alert("密码修改成功，请重新登录");
+                      clearAuth();
+                      navigate("/login", { replace: true });
+                    } catch (e: any) {
+                      alert(e?.message || "修改失败");
+                    } finally {
+                      setPasswordLoading(false);
+                    }
+                  }}
+                >
+                  {passwordLoading ? "提交中..." : "确认修改"}
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="change-phone">
+              <h2 className="text-lg font-bold text-foreground mb-4">更换手机号</h2>
+              <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="newPhone">新手机号</Label>
+                  <Input
+                    id="newPhone"
+                    type="tel"
+                    placeholder="请输入新手机号"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="code">验证码</Label>
+                  <div className="flex gap-2">
+                    <Input id="code" placeholder="请输入验证码" value={code} onChange={(e) => setCode(e.target.value)} />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={sending || !newPhone.trim() || Date.now() < coolDownUntil}
+                      onClick={async () => {
+                        const p = newPhone.trim();
+                        if (!p) return;
+                        setSending(true);
+                        try {
+                          await api.sendChangePhoneCode({ newPhone: p });
+                          alert("验证码已发送");
+                          setCoolDownUntil(Date.now() + 60 * 1000);
+                        } catch (e: any) {
+                          alert(e?.message || "发送失败");
+                        } finally {
+                          setSending(false);
+                        }
+                      }}
+                    >
+                      {coolDownText || (sending ? "发送中..." : "发送验证码")}
+                    </Button>
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  disabled={phoneLoading || !newPhone.trim() || !code.trim()}
+                  onClick={async () => {
+                    setPhoneLoading(true);
+                    try {
+                      await api.confirmChangePhone({ newPhone: newPhone.trim(), code: code.trim() });
+                      alert("手机号已更新");
+                      await refreshStats();
+                    } catch (e: any) {
+                      alert(e?.message || "更换失败");
+                    } finally {
+                      setPhoneLoading(false);
+                    }
+                  }}
+                >
+                  {phoneLoading ? "提交中..." : "确认更换"}
+                </Button>
               </div>
             </TabsContent>
           </Tabs>
@@ -172,3 +973,57 @@ const Profile = () => {
 };
 
 export default Profile;
+
+function OrderList({
+  orders,
+  loading,
+  statusText,
+  statusVariant,
+  onOpen,
+}: {
+  orders: Order[];
+  loading: boolean;
+  statusText: Record<string, string>;
+  statusVariant: (s: string) => any;
+  onOpen: (id: string) => void;
+}) {
+  if (loading) {
+    return <div className="text-center py-16 text-muted-foreground">加载中...</div>;
+  }
+  if (orders.length === 0) {
+    return <div className="text-center py-16 text-muted-foreground">暂无订单</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {orders.map((order) => (
+        <button key={order.id} className="w-full text-left" onClick={() => onOpen(order.id)}>
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs text-muted-foreground">订单号：{order.orderNo}</span>
+                <Badge variant={statusVariant(order.status)}>
+                  {statusText[order.status] || order.status}
+                </Badge>
+              </div>
+              <div className="flex gap-3">
+                <img
+                  src={resolveAssetUrl(order.product.images?.[0])}
+                  alt=""
+                  className="h-16 w-16 rounded-lg object-cover shrink-0 bg-muted"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{order.product.title}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-sm font-bold text-primary">¥{order.amount}</span>
+                    <span className="text-xs text-muted-foreground">{order.createdAt}</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </button>
+      ))}
+    </div>
+  );
+}

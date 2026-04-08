@@ -10,6 +10,7 @@ import { ShoppingBag, Package } from "lucide-react";
 import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
 import type { Order } from "@/types";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const statusVariant = (status: string) => {
   switch (status) {
@@ -191,7 +192,7 @@ const OrderList = ({ orders, role, loading }: OrderListProps) => {
               </div>
               <div className="flex gap-3">
                 <img
-                  src={order.product.images[0] || "https://via.placeholder.com/100"}
+                  src={resolveAssetUrl(order.product.images?.[0]) || "https://via.placeholder.com/100"}
                   alt=""
                   className="h-16 w-16 rounded-lg object-cover shrink-0"
                 />

@@ -1,4 +1,11 @@
-CREATE DATABASE IF NOT EXISTS `second_hand`
+-- 初始化脚本（推荐用于全新环境一键部署）
+-- 约定：
+-- - 图片字段（users.avatar / products.image_url / products.images / banners.image）推荐存“相对路径”
+--   例如：/uploads/xxx.jpg 或 /api/oss/object?key=xxx
+-- - 由前端/网关根据当前环境域名拼接成可访问 URL
+
+DROP DATABASE IF EXISTS `second_hand`;
+CREATE DATABASE `second_hand`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 USE `second_hand`;
@@ -6,17 +13,15 @@ USE `second_hand`;
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
-CREATE TABLE IF NOT EXISTS `users` (
+-- 用户表
+CREATE TABLE `users` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `email` VARCHAR(255),
   `name` VARCHAR(255),
   `nickname` VARCHAR(255),
-  `avatar` VARCHAR(255),
+  `avatar` VARCHAR(512),
   `phone` VARCHAR(20),
-  `studentId` VARCHAR(20),
   `gender` ENUM('male', 'female', 'other') DEFAULT 'other',
-  `grade` VARCHAR(50),
-  `major` VARCHAR(100),
   `bio` TEXT,
   `role` ENUM('user', 'admin') DEFAULT 'user',
   `status` ENUM('active', 'banned') DEFAULT 'active',
@@ -24,7 +29,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `products` (
+-- 商品表
+CREATE TABLE `products` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `title` VARCHAR(255),
   `description` TEXT,
@@ -35,7 +41,7 @@ CREATE TABLE IF NOT EXISTS `products` (
   `category_id` VARCHAR(50),
   `campus` VARCHAR(100),
   `owner_id` INT,
-  `status` ENUM('pending', 'approved', 'rejected', 'down', 'deleted') DEFAULT 'pending',
+  `status` ENUM('pending', 'approved', 'rejected', 'down', 'deleted') DEFAULT 'approved',
   `reject_reason` TEXT,
   `views` INT DEFAULT 0,
   `favorites` INT DEFAULT 0,
@@ -47,7 +53,8 @@ CREATE TABLE IF NOT EXISTS `products` (
   CONSTRAINT `fk_products_owner_id` FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `favorites` (
+-- 收藏表
+CREATE TABLE `favorites` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `user_id` INT,
   `product_id` INT,
@@ -59,7 +66,8 @@ CREATE TABLE IF NOT EXISTS `favorites` (
   CONSTRAINT `fk_favorites_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `orders` (
+-- 订单表
+CREATE TABLE `orders` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `orderNo` VARCHAR(50),
   `buyer_id` INT,
@@ -81,7 +89,8 @@ CREATE TABLE IF NOT EXISTS `orders` (
   CONSTRAINT `fk_orders_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `addresses` (
+-- 地址表
+CREATE TABLE `addresses` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `user_id` INT,
   `contact` VARCHAR(50),
@@ -95,7 +104,8 @@ CREATE TABLE IF NOT EXISTS `addresses` (
   CONSTRAINT `fk_addresses_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `evaluations` (
+-- 评价表
+CREATE TABLE `evaluations` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `order_id` INT,
   `user_id` INT,
@@ -112,7 +122,8 @@ CREATE TABLE IF NOT EXISTS `evaluations` (
   CONSTRAINT `fk_evaluations_target_id` FOREIGN KEY (`target_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `complaints` (
+-- 投诉表
+CREATE TABLE `complaints` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `user_id` INT,
   `type` VARCHAR(50),
@@ -128,7 +139,8 @@ CREATE TABLE IF NOT EXISTS `complaints` (
   CONSTRAINT `fk_complaints_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `notifications` (
+-- 通知表
+CREATE TABLE `notifications` (
   `id` VARCHAR(50) PRIMARY KEY,
   `user_id` INT,
   `type` VARCHAR(50),
@@ -149,7 +161,8 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   CONSTRAINT `fk_notifications_complaint_id` FOREIGN KEY (`complaint_id`) REFERENCES `complaints`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `logs` (
+-- 操作日志表
+CREATE TABLE `logs` (
   `id` VARCHAR(50) PRIMARY KEY,
   `user_id` INT,
   `action` VARCHAR(100),
@@ -162,7 +175,8 @@ CREATE TABLE IF NOT EXISTS `logs` (
   CONSTRAINT `fk_logs_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `announcements` (
+-- 公告表
+CREATE TABLE `announcements` (
   `id` VARCHAR(50) PRIMARY KEY,
   `title` VARCHAR(255),
   `content` TEXT,
@@ -172,7 +186,8 @@ CREATE TABLE IF NOT EXISTS `announcements` (
   INDEX `idx_announcements_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `banners` (
+-- 轮播图表
+CREATE TABLE `banners` (
   `id` VARCHAR(50) PRIMARY KEY,
   `title` VARCHAR(255),
   `image` VARCHAR(255),
@@ -184,7 +199,8 @@ CREATE TABLE IF NOT EXISTS `banners` (
   INDEX `idx_banners_active` (`active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `categories` (
+-- 分类表
+CREATE TABLE `categories` (
   `id` VARCHAR(50) PRIMARY KEY,
   `name` VARCHAR(100),
   `parentId` VARCHAR(50),
@@ -194,7 +210,36 @@ CREATE TABLE IF NOT EXISTS `categories` (
   INDEX `idx_categories_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `product_tags` (
+-- 字典表（校区/成色等可配置选项）
+CREATE TABLE `dict_items` (
+  `id` VARCHAR(64) PRIMARY KEY,
+  `dict_type` VARCHAR(50) NOT NULL,
+  `value` VARCHAR(100) NOT NULL,
+  `label` VARCHAR(100) NOT NULL,
+  `sort` INT DEFAULT 0,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_dict_type_value` (`dict_type`, `value`),
+  INDEX `idx_dict_type_sort` (`dict_type`, `sort`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- AI 中心：提示词管理
+CREATE TABLE `ai_prompts` (
+  `id` VARCHAR(64) PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL,
+  `scene` VARCHAR(100) NOT NULL,
+  `content` TEXT NOT NULL,
+  `enabled` BOOLEAN DEFAULT TRUE,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_ai_prompts_scene` (`scene`),
+  INDEX `idx_ai_prompts_enabled` (`enabled`),
+  INDEX `idx_ai_prompts_updated_at` (`updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 商品标签
+CREATE TABLE `product_tags` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `product_id` INT,
   `tag_name` VARCHAR(50),
@@ -204,7 +249,8 @@ CREATE TABLE IF NOT EXISTS `product_tags` (
   CONSTRAINT `fk_product_tags_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `user_tags` (
+-- 用户标签
+CREATE TABLE `user_tags` (
   `user_id` INT,
   `tag_name` VARCHAR(50),
   `weight` INT DEFAULT 1,
@@ -214,7 +260,8 @@ CREATE TABLE IF NOT EXISTS `user_tags` (
   CONSTRAINT `fk_user_tags_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS `user_recommend` (
+-- 用户推荐
+CREATE TABLE `user_recommend` (
   `user_id` INT,
   `product_id` INT,
   `score` DECIMAL(5, 2),
@@ -227,31 +274,3 @@ CREATE TABLE IF NOT EXISTS `user_recommend` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
-
-INSERT INTO `users` (`id`, `email`, `name`, `nickname`, `avatar`, `phone`, `studentId`, `role`, `status`, `password_hash`)
-VALUES
-  (1, 'alice@example.com', 'Alice', '数码小王子', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felix', '13800000001', '2021001', 'user', 'active', 'demo'),
-  (2, 'admin@example.com', 'Admin', '管理员', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Admin', '13800000002', '2022002', 'admin', 'active', 'demo')
-ON DUPLICATE KEY UPDATE `email` = VALUES(`email`);
-
-INSERT INTO `categories` (`id`, `name`, `parentId`, `sort`, `enabled`)
-VALUES
-  ('c1', '数码产品', NULL, 1, TRUE),
-  ('c1-1', '手机', 'c1', 1, TRUE),
-  ('c1-2', '平板电脑', 'c1', 2, TRUE),
-  ('c2', '教材书籍', NULL, 2, TRUE),
-  ('c2-1', '公共课教材', 'c2', 1, TRUE)
-ON DUPLICATE KEY UPDATE `name` = VALUES(`name`);
-
-INSERT INTO `announcements` (`id`, `title`, `content`, `isTop`, `status`)
-VALUES
-  ('ann_seed_1', '🎉 平台上线公告', '校园二手交易平台已上线，欢迎体验！', TRUE, 'published'),
-  ('ann_seed_2', '⚠️ 交易安全提醒', '请优先选择校内当面交易，不要站外转账。', FALSE, 'published')
-ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
-
-INSERT INTO `banners` (`id`, `title`, `image`, `link`, `sort`, `active`)
-VALUES
-  ('ban_seed_1', '毕业季闲置大甩卖', 'https://images.unsplash.com/photo-1523050854058-8df90110c476?w=1200&h=400&fit=crop', '/products', 1, TRUE),
-  ('ban_seed_2', '教材书籍专区', 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=1200&h=400&fit=crop', '/products', 2, TRUE)
-ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);
-

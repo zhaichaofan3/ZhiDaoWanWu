@@ -29,5 +29,17 @@ export function buildPublicService({ db }) {
       const list = await db.query(sql);
       return { list };
     },
+
+    async getDictItems(type) {
+      const dictType = String(type || "").trim();
+      if (!dictType) return { list: [] };
+      const sql = `
+        SELECT * FROM dict_items
+        WHERE dict_type = ? AND enabled = true
+        ORDER BY sort ASC
+      `;
+      const list = await db.query(sql, [dictType]);
+      return { list };
+    },
   };
 }

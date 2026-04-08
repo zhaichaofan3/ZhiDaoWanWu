@@ -9,6 +9,7 @@ import { isFavorited, toggleFavorite } from "@/lib/favorites";
 import { api } from "@/lib/api";
 import type { Product } from "@/types";
 import { getMe } from "@/lib/auth";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const ProductDetail = () => {
   const { id } = useParams();
@@ -40,7 +41,7 @@ const ProductDetail = () => {
             nickname: data.owner_name || "未知卖家",
             avatar: ""
           },
-          status: data.status === "approved" ? "已上架" : data.status === "pending" ? "审核中" : "已下架",
+          status: data.status === "down" || data.status === "deleted" ? "已下架" : "已上架",
           views: data.views || 0,
           favorites: data.favorites || 0,
           campus: data.campus || "",
@@ -158,7 +159,7 @@ const ProductDetail = () => {
             {/* Images */}
             <div className="space-y-3">
               <div className="aspect-square rounded-xl overflow-hidden bg-muted">
-                <img src={product.images[currentImage]} alt={product.title} className="h-full w-full object-cover" />
+                <img src={resolveAssetUrl(product.images[currentImage])} alt={product.title} className="h-full w-full object-cover" />
               </div>
               {product.images.length > 1 && (
                 <div className="flex gap-2">
@@ -168,7 +169,7 @@ const ProductDetail = () => {
                       onClick={() => setCurrentImage(i)}
                       className={`h-16 w-16 rounded-md overflow-hidden border-2 transition-colors ${i === currentImage ? "border-primary" : "border-transparent"}`}
                     >
-                      <img src={img} alt="" className="h-full w-full object-cover" />
+                      <img src={resolveAssetUrl(img)} alt="" className="h-full w-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -208,7 +209,7 @@ const ProductDetail = () => {
               <div className="border-t border-border pt-4">
                 <h3 className="font-medium text-foreground mb-2">卖家信息</h3>
                 <div className="flex items-center gap-3">
-                  <img src={product.seller.avatar} alt="" className="h-10 w-10 rounded-full bg-muted" />
+                  <img src={resolveAssetUrl(product.seller.avatar)} alt="" className="h-10 w-10 rounded-full bg-muted" />
                   <div>
                     <p className="font-medium text-foreground">{product.seller.nickname}</p>
                     <p className="text-xs text-muted-foreground">{product.campus}</p>

@@ -9,8 +9,6 @@ function quoteIdentifier(name) {
 }
 
 function getMysqlConfig() {
-  const url = process.env.MYSQL_URL;
-  if (url) return { uri: url };
   return {
     host: process.env.MYSQL_HOST || "localhost",
     port: Number(process.env.MYSQL_PORT || 3306),
@@ -26,7 +24,7 @@ function getMysqlConfig() {
 async function ensurePool() {
   if (pool) return pool;
   const cfg = getMysqlConfig();
-  pool = cfg.uri ? mysql.createPool(cfg.uri) : mysql.createPool(cfg);
+  pool = mysql.createPool(cfg);
   return pool;
 }
 

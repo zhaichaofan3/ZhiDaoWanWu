@@ -4,6 +4,37 @@ export function buildAuthController(deps) {
   const authService = buildAuthService(deps);
 
   return {
+    async sendSmsCode(req, res) {
+      try {
+        const { phone, scene } = req.body ?? {};
+        const result = await deps.smsService.sendCode({ phone, scene });
+        return res.status(result.status).json(result.body);
+      } catch (error) {
+        console.error("发送短信验证码失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async loginBySms(req, res) {
+      try {
+        const result = await authService.loginBySms(req.body ?? {}, deps);
+        return res.status(result.status).json(result.body);
+      } catch (error) {
+        console.error("短信登录失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async resetPasswordBySms(req, res) {
+      try {
+        const result = await authService.resetPasswordBySms(req.body ?? {}, deps);
+        return res.status(result.status).json(result.body);
+      } catch (error) {
+        console.error("短信重置密码失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
     async login(req, res) {
       try {
         const result = await authService.login(req.body ?? {});

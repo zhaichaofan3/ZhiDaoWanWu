@@ -1,60 +1,108 @@
-export function buildAuthService({ db, createToken, hashPasswordMD5 }) {
-  async function login({ account, email, studentId, password }) {
-    const loginKey = account || email || studentId;
-    if (!loginKey || !password) {
-      return { status: 400, body: { message: "account(或email/学号) 和 password 为必填" } };
-    }
+function normalizePhone(phone) {
+  return String(phone || "").replace(/\s+/g, "");
+}
 
-    let sql;
-    let params;
-    if (loginKey.includes("@")) {
-      sql = "SELECT * FROM users WHERE email = ?";
-      params = [loginKey];
-    } else {
-      sql = "SELECT * FROM users WHERE studentId = ? OR phone = ?";
-      params = [loginKey, loginKey];
-    }
+function isValidCNPhone(phone) {
+  return /^1\d{10}$/.test(phone);
+}
 
-    const users = await db.query(sql, params);
+export function buildAuthService({ db, createToken, hashPassword, verifyPassword, smsService }) {
+  async function loginBySms({ phone, code }, { smsService }) {
+    if (!smsService) return { status: 500, body: { message: "短信服务未配置" } };
+    const p = String(phone || "").trim();
+    const c = String(code || "").trim();
+    if (!p || !c) return { status: 400, body: { message: "phone 和 code 为必填" } };
+
+    const v = smsService.verifyCode({ phone: p, scene: "login", code: c });
+    if (!v.ok) return { status: v.status, body: { message: v.message } };
+
+    const users = await db.query("SELECT * FROM users WHERE phone = ?", [p]);
     const user = users[0];
-    if (!user) return { status: 401, body: { message: "账号或密码不正确" } };
+    if (!user) return { status: 404, body: { message: "该手机号未注册" } };
     if (user.status === "banned") return { status: 403, body: { message: "账号已封禁" } };
-
-    const ok =
-      user.password_hash === "demo" ||
-      user.password_hash === password ||
-      user.password_hash === hashPasswordMD5(password);
-    if (!ok) return { status: 401, body: { message: "账号或密码不正确" } };
 
     const token = createToken({ uid: user.id, role: user.role });
     return {
       status: 200,
       body: {
-        user: { id: user.id, nickname: user.nickname, role: user.role, studentId: user.studentId },
+        user: { id: user.id, nickname: user.nickname, role: user.role },
+        token,
+      },
+    };
+  }
+
+  async function resetPasswordBySms({ phone, code, newPassword }, { smsService }) {
+    if (!smsService) return { status: 500, body: { message: "短信服务未配置" } };
+    const p = String(phone || "").trim();
+    const c = String(code || "").trim();
+    const np = String(newPassword || "");
+    if (!p || !c || !np) return { status: 400, body: { message: "phone、code、newPassword 为必填" } };
+
+    const v = smsService.verifyCode({ phone: p, scene: "reset_password", code: c });
+    if (!v.ok) return { status: v.status, body: { message: v.message } };
+
+    const users = await db.query("SELECT * FROM users WHERE phone = ?", [p]);
+    const user = users[0];
+    if (!user) return { status: 404, body: { message: "该手机号未注册" } };
+    if (user.status === "banned") return { status: 403, body: { message: "账号已封禁" } };
+
+    await db.update("users", user.id, { password_hash: await hashPassword(np) });
+    return { status: 200, body: { message: "密码已重置，请使用新密码登录" } };
+  }
+
+  async function login({ phone, password }) {
+    const p = normalizePhone(phone);
+    if (!p || !password) {
+      return { status: 400, body: { message: "phone 和 password 为必填" } };
+    }
+    if (!isValidCNPhone(p)) {
+      return { status: 400, body: { message: "手机号格式不正确" } };
+    }
+
+    const users = await db.query("SELECT * FROM users WHERE phone = ?", [p]);
+    const user = users[0];
+    if (!user) return { status: 401, body: { message: "账号或密码不正确" } };
+    if (user.status === "banned") return { status: 403, body: { message: "账号已封禁" } };
+
+    const v = await verifyPassword(password, user.password_hash);
+    if (!v.ok) return { status: 401, body: { message: "账号或密码不正确" } };
+    if (v.needsUpgrade) {
+      await db.update("users", user.id, { password_hash: await hashPassword(password) });
+    }
+
+    const token = createToken({ uid: user.id, role: user.role });
+    return {
+      status: 200,
+      body: {
+        user: { id: user.id, nickname: user.nickname, role: user.role },
         token,
       },
     };
   }
 
   async function register(payload) {
-    const { nickname, studentId, phone, password, gender, grade, major, bio, avatar } = payload ?? {};
-    if (!nickname || !studentId || !password) {
-      return { status: 400, body: { message: "nickname、studentId 和 password 为必填" } };
+    const { nickname, phone, code, password, gender, bio, avatar } = payload ?? {};
+    const p = normalizePhone(phone);
+    const c = String(code || "").trim();
+    if (!nickname || !p || !c || !password) {
+      return { status: 400, body: { message: "nickname、phone、code 和 password 为必填" } };
+    }
+    if (!isValidCNPhone(p)) {
+      return { status: 400, body: { message: "手机号格式不正确" } };
+    }
+    if (!smsService) {
+      return { status: 500, body: { message: "短信服务未配置" } };
     }
 
-    let checkSql;
-    let checkParams;
-    if (phone) {
-      checkSql = "SELECT * FROM users WHERE studentId = ? OR phone = ?";
-      checkParams = [studentId, phone];
-    } else {
-      checkSql = "SELECT * FROM users WHERE studentId = ?";
-      checkParams = [studentId];
-    }
+    const v = smsService.verifyCode({ phone: p, scene: "register", code: c });
+    if (!v.ok) return { status: v.status, body: { message: v.message } };
+
+    const checkSql = "SELECT * FROM users WHERE phone = ?";
+    const checkParams = [p];
 
     const users = await db.query(checkSql, checkParams);
     if (users.length > 0) {
-      return { status: 409, body: { message: "学号或手机号已存在" } };
+      return { status: 409, body: { message: "手机号已存在" } };
     }
 
     const userData = {
@@ -62,15 +110,12 @@ export function buildAuthService({ db, createToken, hashPasswordMD5 }) {
       name: nickname,
       nickname,
       avatar: avatar || "",
-      phone: phone || "",
-      studentId,
+      phone: p,
       gender: gender || "other",
-      grade: grade || "",
-      major: major || "",
       bio: bio || "",
       role: "user",
       status: "active",
-      password_hash: hashPasswordMD5(password),
+      password_hash: await hashPassword(password),
       created_at: new Date().toISOString(),
     };
 
@@ -78,7 +123,7 @@ export function buildAuthService({ db, createToken, hashPasswordMD5 }) {
     const token = createToken({ uid: userId, role: "user" });
     return {
       status: 201,
-      body: { user: { id: userId, nickname, role: "user", studentId }, token },
+      body: { user: { id: userId, nickname, role: "user" }, token },
     };
   }
 
@@ -89,15 +134,12 @@ export function buildAuthService({ db, createToken, hashPasswordMD5 }) {
         nickname: authUser.nickname,
         avatar: authUser.avatar,
         phone: authUser.phone,
-        studentId: authUser.studentId,
         gender: authUser.gender,
-        grade: authUser.grade,
-        major: authUser.major,
         bio: authUser.bio,
         role: authUser.role,
       },
     };
   }
 
-  return { login, register, me };
+  return { login, register, me, loginBySms, resetPasswordBySms };
 }

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Heart, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Product } from "@/types";
+import { resolveAssetUrl } from "@/lib/assets";
 
 interface ProductCardProps {
   product: Product;
@@ -21,7 +22,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
         {/* Image */}
         <div className="relative aspect-square overflow-hidden bg-muted">
           <img
-            src={product.images[0]}
+            src={resolveAssetUrl(product.images[0])}
             alt={product.title}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
@@ -49,7 +50,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
-              <img src={product.seller.avatar} alt="" className="h-4 w-4 rounded-full" />
+              <img src={resolveAssetUrl(product.seller.avatar)} alt="" className="h-4 w-4 rounded-full" />
               <span className="truncate max-w-[80px]">{product.seller.nickname}</span>
             </div>
             <div className="flex items-center gap-2">
