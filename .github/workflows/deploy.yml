@@ -23,7 +23,7 @@ jobs:
 
       - name: 安装 Sealos CLI
         run: |
-          curl -sfL https://raw.githubusercontent.com/labring/sealos/main/scripts/install.sh | sh
+          curl -sfL https://raw.githubusercontent.com/labring/sealos/main/scripts/install.sh | sh -s v4.3.1
           sealos version
 
       - name: 登录 Sealos
@@ -32,7 +32,7 @@ jobs:
 
       - name: 部署到 Sealos
         run: |
-          sealos run docker.io/library/nginx:latest \
+          sealos run https://github.com/${{ github.repository }} \
             --name my-fullstack-app \
             --port 4000:4000 \
             --env NODE_ENV=production \
