@@ -55,8 +55,14 @@ export function buildAuthController(deps) {
       }
     },
 
-    me(req, res) {
-      return res.json(authService.me(req.auth.user));
+    async me(req, res) {
+      try {
+        const result = await authService.me(req.auth.user);
+        return res.json(result);
+      } catch (error) {
+        console.error("获取用户信息失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
     },
   };
 }

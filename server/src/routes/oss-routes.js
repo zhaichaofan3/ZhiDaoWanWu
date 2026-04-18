@@ -87,10 +87,8 @@ export function createOssRouter({
         }),
       );
 
-      const base = `${req.protocol}://${req.get("host")}`;
       const path = `/api/oss/object?key=${encodeURIComponent(key)}`;
-      const url = `${base}${path}`;
-      res.json({ key, bucket: OSS_BUCKET, path, url });
+      res.json({ key, bucket: OSS_BUCKET, path, url: path });
     } catch (error) {
       console.error("后端代理上传 OSS 失败:", error);
       return res.status(500).json({ message: "后端代理上传失败" });

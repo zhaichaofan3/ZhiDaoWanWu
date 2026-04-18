@@ -10,6 +10,8 @@ export function createPublicRouter(deps) {
   router.get("/banners", controller.banners);
   router.get("/categories", controller.categories);
   router.get("/dicts", controller.dicts);
+  router.get("/tenants", controller.tenants);
+  router.get("/tenants/:id", controller.tenantById);
 
   return router;
 }

@@ -1,12 +1,10 @@
-import { getToken, clearAuth, setMe, type Me } from "./auth";
+import { getToken, clearAuth, setMe, setToken, type Me } from "./auth";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, "") || "";
 
 function resolveApiUrl(path: string) {
-  // 默认空基址：直接请求 /api/*，由同源服务或 Vite 代理处理
   if (!API_BASE) return path;
 
-  // 允许显式配置为 /api，避免拼接成 /api/api/*
   if (API_BASE === "/api" && path.startsWith("/api/")) return path;
 
   return `${API_BASE}${path}`;
@@ -31,14 +29,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    // token 无效/过期时清理本地登录态，避免页面一直报错
     if (res.status === 401 || res.status === 403) {
       clearAuth();
     }
     throw new Error(message);
   }
 
-  return res.json() as Promise<T>;
+  try {
+    const data = await res.json();
+    console.log(`API ${path} 响应:`, data);
+    return data as T;
+  } catch (error) {
+    console.error(`API ${path} JSON 解析失败:`, error);
+    throw new Error("响应数据格式错误");
+  }
 }
 
 async function uploadViaBackend(file: File, folder = "products") {
@@ -100,13 +104,13 @@ export const api = {
     }),
 
   authLoginBySms: (data: { phone: string; code: string }) =>
-    request<{ user: { id: number; nickname: string; role: "user" | "admin" }; token: string }>(
-      "/api/auth/sms/login",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
+    request<{
+      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; emailVerified: boolean };
+      token: string;
+    }>("/api/auth/sms/login", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   authResetPasswordBySms: (data: { phone: string; code: string; newPassword: string }) =>
     request<{ message: string }>("/api/auth/sms/reset-password", {
@@ -115,13 +119,13 @@ export const api = {
     }),
 
   login: (data: { phone: string; password: string }) =>
-    request<{ user: { id: number; nickname: string; role: "user" | "admin" }; token: string }>(
-      "/api/auth/login",
-      {
-        method: "POST",
-        body: JSON.stringify(data),
-      }
-    ),
+    request<{
+      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; emailVerified: boolean };
+      token: string;
+    }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   register: (data: {
     nickname: string;
@@ -133,7 +137,7 @@ export const api = {
     avatar?: string;
   }) =>
     request<{
-      user: { id: number; nickname: string; role: "user" | "admin" };
+      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; emailVerified: boolean };
       token: string;
     }>("/api/auth/register", {
       method: "POST",
@@ -210,6 +214,26 @@ export const api = {
       method: "PATCH",
     }),
 
+  sendEmailVerificationCode: (data: { email: string }) =>
+    request<{ message: string; tenantName?: string }>("/api/auth/email/send", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  verifyEmailCode: (data: { email: string; code: string }) =>
+    request<{ message: string }>("/api/auth/email/verify", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getEmailVerificationStatus: () =>
+    request<{
+      emailVerified: boolean;
+      email: string;
+      tenantId: number | null;
+      verifications: any[];
+    }>("/api/auth/email/status"),
+
   // Admin
   adminListUsers: () =>
     request<{
@@ -240,6 +264,8 @@ export const api = {
         role: "user" | "admin";
         status: "active" | "banned";
         created_at: string;
+        tenant_id?: number | null;
+        email_verified?: number;
       };
       stats: { products: number; orders: number; favorites: number };
       products: any[];
@@ -274,6 +300,12 @@ export const api = {
     request<{ message: string }>(`/api/admin/users/${userId}/password`, {
       method: "POST",
       body: JSON.stringify({ newPassword }),
+    }),
+
+  adminSetUserTenant: (userId: number, tenantId: number | null) =>
+    request<{ message: string }>(`/api/admin/users/${userId}/tenant`, {
+      method: "PATCH",
+      body: JSON.stringify({ tenantId }),
     }),
 
   adminGetUserLogs: (userId: number, limit = 50) => {
@@ -402,7 +434,6 @@ export const api = {
   adminDeleteCategory: (id: string) =>
     request<void>(`/api/admin/categories/${id}`, { method: "DELETE" }),
 
-  // Admin: 字典管理
   adminListDictItems: (type: string) =>
     request<{ list: any[] }>(`/api/admin/dicts/${encodeURIComponent(type)}`).then((r) => r.list),
 
@@ -427,7 +458,6 @@ export const api = {
   adminDeleteDictItem: (type: string, id: string) =>
     request<void>(`/api/admin/dicts/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
-  // Admin: AI 中心（提示词管理）
   adminListAiPrompts: (params?: { keyword?: string; scene?: string; enabled?: boolean }) => {
     const q = new URLSearchParams();
     if (params?.keyword) q.set("keyword", params.keyword);
@@ -537,7 +567,6 @@ export const api = {
       }>;
     }>("/api/banners").then((r) => r.list),
 
-  // 管理端：订单全量管理
   adminListOrders: (params?: { status?: string; keyword?: string }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
@@ -546,7 +575,6 @@ export const api = {
     return request<{ list: any[] }>(`/api/admin/orders${suffix}`).then((r) => r.list);
   },
 
-  // 管理端：投诉与纠纷处理
   adminListComplaints: (params?: { status?: string; type?: string }) => {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
@@ -564,7 +592,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  // 管理端：操作日志管理
   adminListLogs: (params?: { action?: string; module?: string; startDate?: string; endDate?: string }) => {
     const q = new URLSearchParams();
     if (params?.action) q.set("action", params.action);
@@ -575,11 +602,9 @@ export const api = {
     return request<{ list: any[] }>(`/api/admin/logs${suffix}`).then((r) => r.list);
   },
 
-  // 管理端：评价与内容审核
   adminListEvaluations: () =>
     request<{ list: any[] }>("/api/admin/evaluations").then((r) => r.list),
 
-  // 管理端：物品收藏管理
   adminListFavorites: (params?: { product_id?: number; user_id?: number }) => {
     const q = new URLSearchParams();
     if (params?.product_id) q.set("product_id", params.product_id.toString());
@@ -689,7 +714,6 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
 
-  // 交易评价
   createEvaluation: (orderId: number, data: {
     rating: number;
     content: string;
@@ -703,7 +727,6 @@ export const api = {
   getMyEvaluation: (orderId: number) =>
     request<{ evaluation: any | null }>(`/api/orders/${orderId}/evaluation`).then((r) => r.evaluation),
 
-  // 投诉与反馈
   createComplaint: (data: {
     type: string;
     target_id: number;
@@ -715,7 +738,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  // 系统通知
   listNotifications: () =>
     request<{ list: any[] }>("/api/users/me/notifications").then((r) => r.list),
 
@@ -729,7 +751,6 @@ export const api = {
       method: "PATCH",
     }),
 
-  // 消息系统
   startConversation: (data: { targetUserId: number; productId?: number | null }) =>
     request<{ id: string }>("/api/messages/conversations", {
       method: "POST",
@@ -788,14 +809,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  // Admin: 用户聊天记录审查
   adminGetUserChats: (userId: number, limit = 50) => {
     const q = new URLSearchParams();
     q.set("limit", String(limit));
     return request<{ list: any[] }>(`/api/admin/users/${userId}/chats?${q.toString()}`).then((r) => r.list);
   },
 
-  // AI 生成商品描述和价格估计
   generateProduct: (data: { description: string; images?: string[] }) =>
     request<{
       description: string;
@@ -805,7 +824,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  // AI 生成商品描述和价格估计（流式）
   generateProductStream: async (
     data: { description: string; images?: string[] },
     handlers: {
@@ -885,7 +903,6 @@ export const api = {
     if (buffer.trim()) handleSseEvent(buffer);
   },
 
-  // AI 搜索：推荐相关性最高的单个商品
   aiSearchTopProduct: (data: { query: string }) =>
     request<{ productId: number | null; reason?: string; aiReply?: string; promptName?: string }>(
       "/api/ai/search-top-product",
@@ -895,7 +912,6 @@ export const api = {
       }
     ),
 
-  // OSS 直传（S3-compatible 通用）
   ossConfig: () =>
     request<{
       enabled: boolean;
@@ -921,9 +937,143 @@ export const api = {
     return uploadViaBackend(file, folder);
   },
 
-  // Admin: upload banner image (supports OSS or local)
   adminUploadBannerImage: async (file: File) => {
     return uploadBannerViaAdmin(file);
   },
-};
 
+  // Tenant APIs
+  getTenants: () => request<{ list: any[] }>('/api/tenants'),
+  getTenantById: (id: number) => request<any>(`/api/tenants/${id}`),
+
+  // Super Admin: Tenant Management
+  adminListTenants: (params?: { status?: string; keyword?: string; page?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.keyword) q.set("keyword", params.keyword);
+    if (params?.page) q.set("page", params.page.toString());
+    if (params?.limit) q.set("limit", params.limit.toString());
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[]; total: number; page: number; limit: number }>(`/api/admin/tenants${suffix}`).then((r) => r);
+  },
+
+  adminGetTenant: (id: number) =>
+    request<any>(`/api/admin/tenants/${id}`),
+
+  adminCreateTenant: (data: { code: string; name: string; short_name?: string; description?: string; logo?: string; logo_dark?: string }) =>
+    request<{ id: number; message: string }>("/api/admin/tenants", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  adminUpdateTenant: (id: number, data: { name?: string; short_name?: string; description?: string; status?: string; logo?: string; logo_dark?: string }) =>
+    request<{ message: string }>(`/api/admin/tenants/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  adminDeleteTenant: (id: number) =>
+    request<{ message: string }>(`/api/admin/tenants/${id}`, {
+      method: "DELETE",
+    }),
+
+  adminAddTenantDomain: (tenantId: number, data: { domain: string; description?: string }) =>
+    request<{ id: number; message: string }>(`/api/admin/tenants/${tenantId}/domains`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  adminUpdateTenantDomain: (tenantId: number, domainId: number, data: { status?: string; description?: string }) =>
+    request<{ message: string }>(`/api/admin/tenants/${tenantId}/domains/${domainId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  adminDeleteTenantDomain: (tenantId: number, domainId: number) =>
+    request<{ message: string }>(`/api/admin/tenants/${tenantId}/domains/${domainId}`, {
+      method: "DELETE",
+    }),
+
+  adminGetRoles: (params?: { type?: string; tenantId?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.type) q.set("type", params.type);
+    if (params?.tenantId) q.set("tenantId", params.tenantId.toString());
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[]; total: number }>(`/api/admin/roles${suffix}`).then((r) => r);
+  },
+
+  adminGetRolePermissions: (roleId: number) =>
+    request<any[]>(`/api/admin/roles/${roleId}/permissions`).then((r) => r),
+
+  adminUpdateRolePermissions: (roleId: number, permissionIds: number[]) =>
+    request<{ message: string }>(`/api/admin/roles/${roleId}/permissions`, {
+      method: "PATCH",
+      body: JSON.stringify({ permissionIds }),
+    }),
+
+  adminGetPermissions: (params?: { module?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.module) q.set("module", params.module);
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[] }>(`/api/admin/permissions${suffix}`).then((r) => r.list);
+  },
+
+  adminGrantUserRole: (userId: number, roleId: number, tenantId?: number) =>
+    request<{ message: string }>(`/api/admin/users/${userId}/roles`, {
+      method: "POST",
+      body: JSON.stringify({ roleId, tenantId }),
+    }),
+
+  adminRevokeUserRole: (userId: number, roleId: number, tenantId?: number) =>
+    request<{ message: string }>(`/api/admin/users/${userId}/roles/${roleId}?${tenantId ? `tenantId=${tenantId}` : ""}`, {
+      method: "DELETE",
+    }),
+
+  adminGetUserRoles: (userId: number, tenantId?: number) =>
+    request<{ list: any[] }>(`/api/admin/users/${userId}/roles${tenantId ? `?tenantId=${tenantId}` : ""}`).then((r) => r.list),
+
+  adminGetUserPermissions: (userId: number, tenantId?: number) =>
+    request<{ list: string[] }>(`/api/admin/users/${userId}/permissions${tenantId ? `?tenantId=${tenantId}` : ""}`).then((r) => r.list),
+
+  // Tenant Admin API
+  tenantInfo: () =>
+    request<any>("/api/tenant/info"),
+
+  tenantDomains: () =>
+    request<{ list: any[] }>("/api/tenant/domains").then((r) => r),
+
+  tenantAddDomain: (data: { domain: string; description?: string; status?: string }) =>
+    request<{ id: number; message: string }>("/api/tenant/domains", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  tenantUpdateDomain: (domainId: number, data: { status?: string; description?: string }) =>
+    request<{ message: string }>(`/api/tenant/domains/${domainId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  tenantDeleteDomain: (domainId: number) =>
+    request<{ message: string }>(`/api/tenant/domains/${domainId}`, {
+      method: "DELETE",
+    }),
+
+  tenantUsers: (params?: { status?: string; keyword?: string; page?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.keyword) q.set("keyword", params.keyword);
+    if (params?.page) q.set("page", params.page.toString());
+    if (params?.limit) q.set("limit", params.limit.toString());
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[]; total: number }>(`/api/tenant/users${suffix}`).then((r) => r);
+  },
+
+  tenantUpdateUserStatus: (userId: number, status: string) =>
+    request<{ message: string }>(`/api/tenant/users/${userId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  tenantStats: () =>
+    request<any>("/api/tenant/stats"),
+};

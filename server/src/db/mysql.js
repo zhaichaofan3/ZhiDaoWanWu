@@ -1,6 +1,4 @@
 import mysql from "mysql2/promise";
-import fs from "node:fs";
-import path from "node:path";
 
 let pool = null;
 
@@ -28,25 +26,10 @@ async function ensurePool() {
   return pool;
 }
 
-async function runSchemaIfNeeded() {
-  const p = await ensurePool();
-  const schemaPath = path.resolve("server/schema.sql");
-  if (!fs.existsSync(schemaPath)) return;
-  const schema = fs.readFileSync(schemaPath, "utf-8");
-  const statements = schema
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const stmt of statements) {
-    await p.query(stmt);
-  }
-}
-
 export const mysqlDb = {
   async initDatabase() {
     await ensurePool();
-    await runSchemaIfNeeded();
-    console.log("数据库初始化完成");
+    console.log("数据库连接成功");
   },
 
   async query(sql, params = []) {

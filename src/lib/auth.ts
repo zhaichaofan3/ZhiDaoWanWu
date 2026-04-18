@@ -11,6 +11,12 @@ export type Me = {
   gender?: "male" | "female" | "other";
   bio?: string;
   role: AuthRole;
+  tenantId?: number | null;
+  tenantName?: string | null;
+  emailVerified: boolean;
+  email?: string;
+  emailVerifiedAt?: string;
+  createdAt?: string;
 };
 
 export function getToken(): string | null {
@@ -55,4 +61,3 @@ export function getMe(): Me | null {
     return null;
   }
 }
-

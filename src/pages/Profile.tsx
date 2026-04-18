@@ -23,6 +23,7 @@ import { api } from "@/lib/api";
 import type { Me } from "@/lib/auth";
 import { clearAuth } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
@@ -98,11 +99,15 @@ const Profile = () => {
     api
       .me()
       .then((u) => {
+        if (!u || typeof u !== "object") {
+          throw new Error("获取用户信息格式异常");
+        }
         const next = u as unknown as Me;
         setMeState(next);
         return next;
       })
       .then(async (u) => {
+        if (!u?.id) return;
         // 优先使用后端聚合统计；失败时退化为前端计算，避免页面一直显示 "-"
         try {
           const s = await api.meStats();
@@ -134,7 +139,8 @@ const Profile = () => {
           setStats(null);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("获取用户信息失败:", err);
         setMeState(null);
         setStats(null);
       });
@@ -400,11 +406,10 @@ const Profile = () => {
                 {user ? (
                   <div className="flex items-center gap-4 mb-6">
                     <div className="shrink-0">
-                      <img
-                        src={resolveAssetUrl(user.avatar) || ""}
-                        alt=""
-                        className="h-16 w-16 rounded-full bg-muted object-cover"
-                      />
+                      <Avatar className="h-16 w-16">
+                        <AvatarImage src={resolveAssetUrl(user.avatar)} />
+                        <AvatarFallback>{user.nickname?.[0] || "U"}</AvatarFallback>
+                      </Avatar>
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-foreground">{user.nickname}</h2>

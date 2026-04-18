@@ -12,52 +12,33 @@ import { applyAdminLogRoutes } from "./admin/logs.js";
 import { applyAdminOrderRoutes } from "./admin/orders.js";
 import { applyAdminProductRoutes } from "./admin/products.js";
 import { applyAdminStatsRoutes } from "./admin/stats.js";
+import { applyAdminTenantRoutes } from "./admin/tenants.js";
 import { applyAdminUserRoutes } from "./admin/users.js";
+import { applyTenantAdminRoutes } from "./admin/tenant-admin.js";
+import { applyAdminRoleRoutes } from "./admin/roles.js";
+import { applyAdminPermissionRoutes } from "./admin/permissions.js";
 
-export function createAdminRouter({
-  db,
-  adminRequired,
-  hashPassword,
-  upload,
-  crypto,
-  fs,
-  path,
-  UPLOADS_DIR,
-  ossReady,
-  s3Client,
-  PutObjectCommand,
-  OSS_BUCKET,
-  OSS_PUBLIC_BASE_URL,
-}) {
+export function createAdminRouter(deps) {
   const router = express.Router();
 
-  applyAdminAiPromptRoutes(router, { db, adminRequired });
-  applyAdminUserRoutes(router, { db, adminRequired, hashPassword });
-  applyAdminStatsRoutes(router, { db, adminRequired });
-  applyAdminAnnouncementRoutes(router, { db, adminRequired });
-  applyAdminBannerRoutes(router, {
-    db,
-    adminRequired,
-    upload,
-    crypto,
-    fs,
-    path,
-    UPLOADS_DIR,
-    ossReady,
-    s3Client,
-    PutObjectCommand,
-    OSS_BUCKET,
-    OSS_PUBLIC_BASE_URL,
-  });
-  applyAdminCategoryRoutes(router, { db, adminRequired });
-  applyAdminDictRoutes(router, { db, adminRequired });
-  applyAdminProductRoutes(router, { db, adminRequired });
-  applyAdminOrderRoutes(router, { db, adminRequired });
-  applyAdminComplaintRoutes(router, { db, adminRequired });
-  applyAdminLogRoutes(router, { db, adminRequired });
-  applyAdminEvaluationRoutes(router, { db, adminRequired });
-  applyAdminFavoriteRoutes(router, { db, adminRequired });
+  applyAdminTenantRoutes(router, deps);
+  applyTenantAdminRoutes(router, deps);
+
+  applyAdminAiPromptRoutes(router, deps);
+  applyAdminUserRoutes(router, deps);
+  applyAdminRoleRoutes(router, deps);
+  applyAdminPermissionRoutes(router, deps);
+  applyAdminStatsRoutes(router, deps);
+  applyAdminAnnouncementRoutes(router, deps);
+  applyAdminBannerRoutes(router, deps);
+  applyAdminCategoryRoutes(router, deps);
+  applyAdminDictRoutes(router, deps);
+  applyAdminProductRoutes(router, deps);
+  applyAdminOrderRoutes(router, deps);
+  applyAdminComplaintRoutes(router, deps);
+  applyAdminLogRoutes(router, deps);
+  applyAdminEvaluationRoutes(router, deps);
+  applyAdminFavoriteRoutes(router, deps);
 
   return router;
 }
-

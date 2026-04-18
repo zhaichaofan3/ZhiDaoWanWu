@@ -1,4 +1,4 @@
-export function applyAdminUserRoutes(router, { db, adminRequired, hashPassword }) {
+export function applyAdminUserRoutes(router, { db, adminRequired, hashPassword, permissionService }) {
   // --- Admin: 用户管理 ---
   function isValidCNPhone(phone) {
     return /^1\d{10}$/.test(String(phone || "").trim());
@@ -12,10 +12,12 @@ export function applyAdminUserRoutes(router, { db, adminRequired, hashPassword }
 
   router.get("/admin/users", adminRequired, (req, res) => {
     const sql = `
-    SELECT u.*, 
+    SELECT u.*,
+           t.name as tenant_name,
            (SELECT COUNT(*) FROM products WHERE owner_id = u.id) as products,
            (SELECT COUNT(*) FROM orders WHERE buyer_id = u.id OR seller_id = u.id) as orders
     FROM users u
+    LEFT JOIN tenants t ON u.tenant_id = t.id
   `;
 
     db.query(sql)
@@ -27,6 +29,8 @@ export function applyAdminUserRoutes(router, { db, adminRequired, hashPassword }
           phone: u.phone,
           role: u.role,
           status: u.status,
+          tenantId: u.tenant_id,
+          tenantName: u.tenant_name,
           createdAt: u.created_at,
           products: u.products,
           orders: u.orders,
@@ -320,6 +324,146 @@ export function applyAdminUserRoutes(router, { db, adminRequired, hashPassword }
         console.error("修改用户头像失败:", error);
         return res.status(500).json({ message: "服务器内部错误" });
       });
+  });
+
+  router.patch("/admin/users/:userId/tenant", adminRequired, async (req, res) => {
+    const userId = Number(req.params.userId);
+    const { tenantId } = req.body ?? {};
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(400).json({ message: "无效的 userId" });
+
+    try {
+      const user = await db.getById("users", userId);
+      if (!user) return res.status(404).json({ message: "用户不存在" });
+
+      if (tenantId !== null) {
+        const tenant = await db.getById("tenants", tenantId);
+        if (!tenant) return res.status(404).json({ message: "学校不存在" });
+      }
+
+      await db.update("users", userId, { tenant_id: tenantId || null });
+
+      await db.insert("logs", {
+        id: `log_${Date.now()}`,
+        user_id: req.auth.uid,
+        action: "绑定用户到学校",
+        module: "用户管理",
+        content: `用户ID: ${userId}, 昵称: ${user.nickname || "-"}, 学校ID: ${tenantId || "解绑"}`,
+        ip: req.ip || "unknown",
+        created_at: new Date().toISOString(),
+      });
+
+      return res.json({ message: "ok" });
+    } catch (error) {
+      console.error("绑定用户到学校失败:", error);
+      return res.status(500).json({ message: "服务器内部错误" });
+    }
+  });
+
+  // 授予用户角色
+  router.post("/admin/users/:userId/roles", adminRequired, async (req, res) => {
+    const userId = Number(req.params.userId);
+    const { roleId, tenantId } = req.body ?? {};
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(400).json({ message: "无效的 userId" });
+    if (!Number.isFinite(roleId) || roleId <= 0) return res.status(400).json({ message: "无效的 roleId" });
+
+    try {
+      const user = await db.getById("users", userId);
+      if (!user) return res.status(404).json({ message: "用户不存在" });
+
+      const result = await permissionService.grantRole(userId, roleId, tenantId || null, req.auth.uid);
+      if (result.status) {
+        return res.status(result.status).json(result.body);
+      }
+
+      return res.json({ message: "ok" });
+    } catch (error) {
+      console.error("授予用户角色失败:", error);
+      return res.status(500).json({ message: "服务器内部错误" });
+    }
+  });
+
+  // 撤销用户角色
+  router.delete("/admin/users/:userId/roles/:roleId", adminRequired, async (req, res) => {
+    const userId = Number(req.params.userId);
+    const roleId = Number(req.params.roleId);
+    const { tenantId } = req.query;
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(400).json({ message: "无效的 userId" });
+    if (!Number.isFinite(roleId) || roleId <= 0) return res.status(400).json({ message: "无效的 roleId" });
+
+    try {
+      const result = await permissionService.revokeRole(userId, roleId, tenantId ? Number(tenantId) : null);
+      if (result.status) {
+        return res.status(result.status).json(result.body);
+      }
+
+      return res.json({ message: "ok" });
+    } catch (error) {
+      console.error("撤销用户角色失败:", error);
+      return res.status(500).json({ message: "服务器内部错误" });
+    }
+  });
+
+  // 获取用户角色列表
+  router.get("/admin/users/:userId/roles", adminRequired, async (req, res) => {
+    const userId = Number(req.params.userId);
+    const { tenantId } = req.query;
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(400).json({ message: "无效的 userId" });
+
+    try {
+      let query = `
+        SELECT r.*, ur.created_at as granted_at, ur.expires_at, u.nickname as granted_by_name
+        FROM user_roles ur
+        INNER JOIN roles r ON ur.role_id = r.id
+        LEFT JOIN users u ON ur.granted_by = u.id
+        WHERE ur.user_id = ?
+          AND r.status = 'active'
+          AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+      `;
+      const params = [userId];
+
+      if (tenantId) {
+        query += " AND ur.tenant_id = ?";
+        params.push(Number(tenantId));
+      } else {
+        query += " AND ur.tenant_id IS NULL";
+      }
+
+      const result = await db.query(query, params);
+      res.json({ list: result });
+    } catch (error) {
+      console.error("获取用户角色列表失败:", error);
+      return res.status(500).json({ message: "服务器内部错误" });
+    }
+  });
+
+  // 获取用户权限列表
+  router.get("/admin/users/:userId/permissions", adminRequired, async (req, res) => {
+    const userId = Number(req.params.userId);
+    const { tenantId } = req.query;
+    if (!Number.isFinite(userId) || userId <= 0) return res.status(400).json({ message: "无效的 userId" });
+
+    try {
+      let query = `
+        SELECT DISTINCT p.code
+        FROM user_roles ur
+        INNER JOIN role_permissions rp ON ur.role_id = rp.role_id
+        INNER JOIN permissions p ON rp.permission_id = p.id
+        WHERE ur.user_id = ?
+      `;
+      const params = [userId];
+
+      if (tenantId) {
+        query += " AND ur.tenant_id = ?";
+        params.push(Number(tenantId));
+      }
+
+      const result = await db.query(query, params);
+      const permissions = result.map(item => item.code);
+      res.json({ list: permissions });
+    } catch (error) {
+      console.error("获取用户权限列表失败:", error);
+      return res.status(500).json({ message: "服务器内部错误" });
+    }
   });
 }
 

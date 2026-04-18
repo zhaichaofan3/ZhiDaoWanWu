@@ -25,7 +25,13 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
     return {
       status: 200,
       body: {
-        user: { id: user.id, nickname: user.nickname, role: user.role },
+        user: {
+          id: user.id,
+          nickname: user.nickname,
+          role: user.role,
+          tenantId: user.tenant_id,
+          emailVerified: user.email_verified === 1,
+        },
         token,
       },
     };
@@ -74,7 +80,13 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
     return {
       status: 200,
       body: {
-        user: { id: user.id, nickname: user.nickname, role: user.role },
+        user: {
+          id: user.id,
+          nickname: user.nickname,
+          role: user.role,
+          tenantId: user.tenant_id,
+          emailVerified: user.email_verified === 1,
+        },
         token,
       },
     };
@@ -115,28 +127,76 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
       bio: bio || "",
       role: "user",
       status: "active",
+      tenant_id: null,
+      email_verified: 0,
       password_hash: await hashPassword(password),
       created_at: new Date().toISOString(),
     };
 
     const userId = await db.insert("users", userData);
+
+    const defaultRole = await db.query(
+      "SELECT id FROM roles WHERE code = 'user' AND tenant_id IS NULL LIMIT 1"
+    );
+    if (defaultRole[0]) {
+      await db.insert("user_roles", {
+        user_id: userId,
+        role_id: defaultRole[0].id,
+        tenant_id: null,
+        granted_by: userId,
+        created_at: new Date().toISOString(),
+      });
+    }
+
     const token = createToken({ uid: userId, role: "user" });
     return {
       status: 201,
-      body: { user: { id: userId, nickname, role: "user" }, token },
+      body: {
+        user: {
+          id: userId,
+          nickname,
+          role: "user",
+          tenantId: null,
+          emailVerified: false,
+        },
+        token,
+      },
     };
   }
 
-  function me(authUser) {
+  async function me(authUser) {
+    const user = await db.getById("users", authUser.id);
+    if (!user) {
+      return {
+        user: {
+          id: authUser.id,
+          nickname: authUser.nickname,
+          role: authUser.role,
+        },
+      };
+    }
+
+    let tenantName = null;
+    if (user.tenant_id) {
+      const tenant = await db.getById("tenants", user.tenant_id);
+      tenantName = tenant?.name || null;
+    }
+
     return {
       user: {
-        id: authUser.id,
-        nickname: authUser.nickname,
-        avatar: authUser.avatar,
-        phone: authUser.phone,
-        gender: authUser.gender,
-        bio: authUser.bio,
-        role: authUser.role,
+        id: user.id,
+        nickname: user.nickname,
+        avatar: user.avatar,
+        phone: user.phone,
+        gender: user.gender,
+        bio: user.bio,
+        role: user.role,
+        tenantId: user.tenant_id,
+        tenantName,
+        emailVerified: user.email_verified === 1,
+        email: user.email || "",
+        emailVerifiedAt: user.email_verified_at,
+        createdAt: user.created_at,
       },
     };
   }

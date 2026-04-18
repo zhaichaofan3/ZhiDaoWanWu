@@ -1,6 +1,15 @@
 export function buildTradeService({ db }) {
   return {
     async createOrder(buyerId, body) {
+      const buyerRows = await db.query("SELECT tenant_id, email_verified FROM users WHERE id = ?", [buyerId]);
+      const buyer = buyerRows[0];
+      if (!buyer) {
+        return { status: 404, body: { message: "用户不存在" } };
+      }
+      if (!buyer.tenant_id || buyer.email_verified !== 1) {
+        return { status: 403, body: { message: "需要先选择学校并完成邮箱认证才能下单", code: "TENANT_NOT_VERIFIED" } };
+      }
+
       const { product_id, deliveryAddress, deliveryTime } = body ?? {};
       if (!product_id || !deliveryAddress || !deliveryTime) {
         return { status: 400, body: { message: "product_id, deliveryAddress, deliveryTime 为必填" } };

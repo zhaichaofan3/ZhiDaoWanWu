@@ -14,3 +14,5 @@ export { default as EvaluationManagementPage } from "@/pages/admin/EvaluationMan
 export { default as FavoriteManagementPage } from "@/pages/admin/FavoriteManagement";
 export { default as LogManagementPage } from "@/pages/admin/LogManagement";
 export { default as AiCenterPage } from "@/pages/admin/AiCenter";
+export { default as TenantManagementPage } from "@/pages/admin/TenantManagement";
+export { default as RoleManagementPage } from "@/pages/admin/RoleManagement";

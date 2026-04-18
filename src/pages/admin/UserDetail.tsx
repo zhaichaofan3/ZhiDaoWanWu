@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -23,12 +23,32 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Ban, RotateCcw, Shield, ShieldCheck, RefreshCw, KeyRound, Upload, Phone, Eye } from "lucide-react";
+import { ArrowLeft, Ban, RotateCcw, Shield, ShieldCheck, RefreshCw, KeyRound, Upload, Phone, Eye, Check, AlertCircle, CheckCircle, Building2 } from "lucide-react";
 import { resolveAssetUrl } from "@/lib/assets";
 import { useUtc8Time } from "@/hooks/use-utc8-time";
 import OrderDetailDialog from "@/components/OrderDetailDialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 type Detail = Awaited<ReturnType<typeof api.adminGetUserDetail>>;
+
+interface Role {
+  id: number;
+  code: string;
+  name: string;
+  tenantId?: number | null;
+}
+
+interface Tenant {
+  id: number;
+  code: string;
+  name: string;
+  short_name?: string;
+}
 
 export default function UserDetail() {
   const { formatDateTime } = useUtc8Time();
@@ -51,6 +71,38 @@ export default function UserDetail() {
   const [phone, setPhone] = useState("");
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
+  
+  // 角色和学校管理
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<"role" | "tenant">("role");
+  const [userRoles, setUserRoles] = useState<Role[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState<string | null>(null);
+  const [drawerSuccess, setDrawerSuccess] = useState<string | null>(null);
+
+  const loadTenants = async () => {
+    try {
+      const res = await api.adminListTenants({ status: "active" });
+      setTenants(res.list || []);
+    } catch (err) {
+      console.error("加载学校失败:", err);
+      setTenants([]);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const res = await api.adminGetRoles();
+      setRoles(res.list || []);
+    } catch (err) {
+      console.error("加载角色失败:", err);
+      setRoles([]);
+    }
+  };
 
   const refresh = async () => {
     if (!Number.isFinite(userId) || userId <= 0) {
@@ -73,6 +125,9 @@ export default function UserDetail() {
       setComplaints(c || []);
       setEvaluations(e || []);
       setChats(ch || []);
+      
+      // 加载学校和角色数据
+      await Promise.all([loadTenants(), loadRoles()]);
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : "加载失败");
@@ -93,16 +148,128 @@ export default function UserDetail() {
 
   const toggleBan = async () => {
     if (!detail) return;
-    const next = detail.user.status === "banned" ? "active" : "banned";
-    await api.adminSetUserStatus(detail.user.id, next);
-    await refresh();
+    
+    setIsLoading(true);
+    try {
+      const next = detail.user.status === "banned" ? "active" : "banned";
+      await api.adminSetUserStatus(detail.user.id, next);
+      await refresh();
+      toast.success(next === "active" ? "用户已解封" : "用户已封禁");
+    } catch (error) {
+      console.error("切换用户状态失败:", error);
+      toast.error("操作失败");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const toggleRole = async () => {
     if (!detail) return;
-    const next = detail.user.role === "admin" ? "user" : "admin";
-    await api.adminSetUserRole(detail.user.id, next);
-    await refresh();
+    
+    setIsLoading(true);
+    try {
+      const next = detail.user.role === "admin" ? "user" : "admin";
+      await api.adminSetUserRole(detail.user.id, next);
+      await refresh();
+      toast.success(next === "admin" ? "已设为管理员" : "已取消管理员");
+    } catch (error) {
+      console.error("切换用户角色失败:", error);
+      toast.error("操作失败");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openRoleDrawer = async () => {
+    if (!detail) return;
+    
+    setDrawerMode("role");
+    setDrawerOpen(true);
+    setSelectedRoleIds([]);
+    setDrawerError(null);
+    setDrawerSuccess(null);
+
+    try {
+      const userRolesList = await api.adminGetUserRoles(detail.user.id);
+      setUserRoles(userRolesList || []);
+      setSelectedRoleIds(userRolesList?.map((r: any) => r.id) || []);
+    } catch (error) {
+      console.error("获取用户角色失败:", error);
+      setUserRoles([]);
+      setDrawerError("获取用户角色失败");
+    }
+  };
+
+  const openTenantDrawer = () => {
+    if (!detail) return;
+    
+    setDrawerMode("tenant");
+    setDrawerOpen(true);
+    setSelectedTenantId(detail.user.tenant_id || null);
+    setDrawerError(null);
+    setDrawerSuccess(null);
+  };
+
+  const handleSaveRole = async () => {
+    if (!detail) return;
+    
+    setIsLoading(true);
+    setDrawerError(null);
+    setDrawerSuccess(null);
+
+    try {
+      const currentRoleIds = userRoles.map((r) => r.id);
+      
+      // 撤销未选中的角色
+      for (const roleId of currentRoleIds) {
+        if (!selectedRoleIds.includes(roleId)) {
+          await api.adminRevokeUserRole(detail.user.id, roleId);
+        }
+      }
+
+      // 授予新选中的角色
+      for (const roleId of selectedRoleIds) {
+        if (!currentRoleIds.includes(roleId)) {
+          await api.adminGrantUserRole(detail.user.id, roleId);
+        }
+      }
+
+      setDrawerSuccess("角色分配成功");
+      // 3秒后关闭抽屉并刷新
+      setTimeout(async () => {
+        setDrawerOpen(false);
+        await refresh();
+      }, 1500);
+    } catch (error) {
+      console.error("角色分配失败:", error);
+      setDrawerError("角色分配失败");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveTenant = async () => {
+    if (!detail) return;
+    
+    setIsLoading(true);
+    setDrawerError(null);
+    setDrawerSuccess(null);
+
+    try {
+      await api.adminSetUserTenant(detail.user.id, selectedTenantId);
+      setDrawerSuccess(selectedTenantId ? "学校绑定成功" : "学校解绑成功");
+      
+      // 3秒后关闭抽屉并刷新
+      setTimeout(async () => {
+        setDrawerOpen(false);
+        await refresh();
+      }, 1500);
+    } catch (error) {
+      console.error("学校绑定失败:", error);
+      setDrawerError("学校绑定失败");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -124,23 +291,23 @@ export default function UserDetail() {
                 <KeyRound className="h-4 w-4" />
                 重置密码
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1"
-                onClick={() => {
-                  setPhone(detail.user.phone || "");
-                  setPhoneOpen(true);
-                }}
-              >
+              <Button variant="outline" size="sm" className="gap-1" onClick={() => { setPhone(detail.user.phone || ""); setPhoneOpen(true); }}>
                 <Phone className="h-4 w-4" />
                 修改手机号
               </Button>
-              <Button variant="secondary" size="sm" className="gap-1" onClick={toggleRole}>
+              <Button variant="outline" size="sm" className="gap-1" onClick={openRoleDrawer}>
+                <Shield className="h-4 w-4" />
+                分配角色
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1" onClick={openTenantDrawer}>
+                <Building2 className="h-4 w-4" />
+                绑定学校
+              </Button>
+              <Button variant="secondary" size="sm" className="gap-1" onClick={toggleRole} disabled={isLoading}>
                 {detail.user.role === "admin" ? <ShieldCheck className="h-4 w-4 text-primary" /> : <Shield className="h-4 w-4" />}
                 {detail.user.role === "admin" ? "取消管理员" : "设为管理员"}
               </Button>
-              <Button variant={detail.user.status === "banned" ? "secondary" : "destructive"} size="sm" className="gap-1" onClick={toggleBan}>
+              <Button variant={detail.user.status === "banned" ? "secondary" : "destructive"} size="sm" className="gap-1" onClick={toggleBan} disabled={isLoading}>
                 {detail.user.status === "banned" ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
                 {detail.user.status === "banned" ? "解封" : "封禁"}
               </Button>
@@ -588,6 +755,183 @@ export default function UserDetail() {
           if (!next) setActiveOrderId(null);
         }}
       />
+
+      <Sheet
+        open={drawerOpen}
+        onOpenChange={(v) => {
+          setDrawerOpen(v);
+          if (!v) {
+            setDrawerError(null);
+            setDrawerSuccess(null);
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-[95vw] sm:max-w-xl p-0">
+          <SheetHeader className="p-6 pb-3">
+            <SheetTitle>{drawerMode === "role" ? "分配角色" : "绑定学校"}</SheetTitle>
+            <SheetDescription>
+              {detail ? `${detail.user.nickname} (${detail.user.phone})` : ""}
+            </SheetDescription>
+          </SheetHeader>
+
+          <ScrollArea className="h-[calc(100vh-160px)] px-6 pb-6">
+            {drawerError && (
+              <div className="mb-4 p-3 rounded-md bg-red-50 text-red-800 border border-red-200">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{drawerError}</span>
+                </div>
+              </div>
+            )}
+            
+            {drawerSuccess && (
+              <div className="mb-4 p-3 rounded-md bg-green-50 text-green-800 border border-green-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  <span>{drawerSuccess}</span>
+                </div>
+              </div>
+            )}
+
+            {drawerMode === "role" ? (
+              <div className="space-y-6">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-sm font-medium">选择角色</Label>
+                    <span className="text-xs text-muted-foreground">
+                      已选择 {selectedRoleIds.length} 个角色
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {roles.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        暂无可用角色
+                      </div>
+                    ) : (
+                      roles.map((role) => (
+                        <div 
+                          key={role.id} 
+                          className="flex items-center space-x-3 p-3 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            if (selectedRoleIds.includes(role.id)) {
+                              setSelectedRoleIds(selectedRoleIds.filter((id) => id !== role.id));
+                            } else {
+                              setSelectedRoleIds([...selectedRoleIds, role.id]);
+                            }
+                          }}
+                        >
+                          <Checkbox
+                            id={`role-${role.id}`}
+                            checked={selectedRoleIds.includes(role.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedRoleIds([...selectedRoleIds, role.id]);
+                              } else {
+                                setSelectedRoleIds(selectedRoleIds.filter((id) => id !== role.id));
+                              }
+                            }}
+                          />
+                          <div className="flex-1">
+                            <Label 
+                              htmlFor={`role-${role.id}`} 
+                              className="font-medium cursor-pointer"
+                            >
+                              {role.name}
+                            </Label>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {role.code} {role.tenantId ? `(租户: ${role.tenantId})` : "(全局)"}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-4 border-t border-muted">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setDrawerOpen(false)}
+                    disabled={isLoading}
+                  >
+                    取消
+                  </Button>
+                  <Button 
+                    onClick={handleSaveRole}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        保存
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div>
+                  <Label className="text-sm font-medium mb-3 block">选择学校</Label>
+                  <Select
+                    value={selectedTenantId?.toString() || "none"}
+                    onValueChange={(v) => setSelectedTenantId(v === "none" ? null : Number(v))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="选择学校" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">不绑定学校</SelectItem>
+                      {tenants.map((tenant) => (
+                        <SelectItem key={tenant.id} value={tenant.id.toString()}>
+                          {tenant.name} {tenant.short_name ? `(${tenant.short_name})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-4 border-t border-muted">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setDrawerOpen(false)}
+                    disabled={isLoading}
+                  >
+                    取消
+                  </Button>
+                  <Button 
+                    onClick={handleSaveTenant}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        保存
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

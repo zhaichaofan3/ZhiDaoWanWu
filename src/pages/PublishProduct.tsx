@@ -13,6 +13,8 @@ import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { resolveAssetUrl } from "@/lib/assets";
 import { toast } from "sonner";
+import { SchoolVerificationPrompt } from "@/components/SchoolVerificationPrompt";
+import { School } from "lucide-react";
 
 const PublishProduct = () => {
   const [images, setImages] = useState<string[]>([]);
@@ -27,10 +29,17 @@ const PublishProduct = () => {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showVerifyDialog, setShowVerifyDialog] = useState(false);
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // AI 帮写相关状态
+  useEffect(() => {
+    const user = getMe();
+    if (user && (!user.tenantId || !user.emailVerified)) {
+      setShowVerifyDialog(true);
+    }
+  }, []);
+
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -408,6 +417,20 @@ const PublishProduct = () => {
         </div>
       </main>
       <Footer />
+      <Dialog open={showVerifyDialog} onOpenChange={setShowVerifyDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <School className="h-5 w-5" />
+              完成学校认证
+            </DialogTitle>
+            <DialogDescription>
+              需要先选择学校并完成邮箱认证才能发布商品
+            </DialogDescription>
+          </DialogHeader>
+          <SchoolVerificationPrompt onVerified={() => setShowVerifyDialog(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

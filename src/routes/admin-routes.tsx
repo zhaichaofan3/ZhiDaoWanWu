@@ -14,8 +14,10 @@ import {
   OrderManagementPage,
   ProductManagementPage,
   RequireAdmin,
+  TenantManagementPage,
   UserDetailPage,
   UserManagementPage,
+  RoleManagementPage,
 } from "@/features/admin/pages";
 
 export const adminRoutes = (
@@ -28,8 +30,10 @@ export const adminRoutes = (
     }
   >
     <Route index element={<DashboardPage />} />
+    <Route path="tenants" element={<TenantManagementPage />} />
     <Route path="users" element={<UserManagementPage />} />
     <Route path="users/:id" element={<UserDetailPage />} />
+    <Route path="roles" element={<RoleManagementPage />} />
     <Route path="products" element={<ProductManagementPage />} />
     <Route path="orders" element={<OrderManagementPage />} />
     <Route path="complaints" element={<ComplaintManagementPage />} />

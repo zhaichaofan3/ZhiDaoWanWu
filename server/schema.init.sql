@@ -1,8 +1,6 @@
--- 初始化脚本（推荐用于全新环境一键部署）
--- 约定：
--- - 图片字段（users.avatar / products.image_url / products.images / banners.image）推荐存“相对路径”
---   例如：/uploads/xxx.jpg 或 /api/oss/object?key=xxx
--- - 由前端/网关根据当前环境域名拼接成可访问 URL
+-- 校园二手市场数据库初始化脚本
+-- 包含完整表结构、租户扩展、角色权限和默认超级管理员
+-- 使用方法：mysql -u root -p < schema.init.sql
 
 DROP DATABASE IF EXISTS `second_hand`;
 CREATE DATABASE `second_hand`
@@ -12,6 +10,10 @@ USE `second_hand`;
 
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
+
+-- =============================================
+-- 1. 基础表结构
+-- =============================================
 
 -- 用户表
 CREATE TABLE `users` (
@@ -23,10 +25,16 @@ CREATE TABLE `users` (
   `phone` VARCHAR(20),
   `gender` ENUM('male', 'female', 'other') DEFAULT 'other',
   `bio` TEXT,
+  `tenant_id` INT DEFAULT NULL,
+  `email_verified` TINYINT(1) DEFAULT 0,
+  `email_verified_at` DATETIME DEFAULT NULL,
+  `student_id` VARCHAR(50) DEFAULT NULL,
   `role` ENUM('user', 'admin') DEFAULT 'user',
   `status` ENUM('active', 'banned') DEFAULT 'active',
   `password_hash` VARCHAR(255),
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_users_tenant` (`tenant_id`),
+  INDEX `idx_users_email_verified` (`email_verified`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 商品表
@@ -39,6 +47,7 @@ CREATE TABLE `products` (
   `images` JSON,
   `condition` VARCHAR(50),
   `category_id` VARCHAR(50),
+  `tenant_id` INT DEFAULT NULL,
   `campus` VARCHAR(100),
   `owner_id` INT,
   `status` ENUM('pending', 'approved', 'rejected', 'down', 'deleted') DEFAULT 'approved',
@@ -50,6 +59,7 @@ CREATE TABLE `products` (
   INDEX `idx_products_owner_id` (`owner_id`),
   INDEX `idx_products_status` (`status`),
   INDEX `idx_products_category_id` (`category_id`),
+  INDEX `idx_products_tenant` (`tenant_id`),
   CONSTRAINT `fk_products_owner_id` FOREIGN KEY (`owner_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -58,10 +68,12 @@ CREATE TABLE `favorites` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `user_id` INT,
   `product_id` INT,
+  `tenant_id` INT DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `uk_favorites_user_product` (`user_id`, `product_id`),
   INDEX `idx_favorites_user_id` (`user_id`),
   INDEX `idx_favorites_product_id` (`product_id`),
+  INDEX `idx_favorites_tenant` (`tenant_id`),
   CONSTRAINT `fk_favorites_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`),
   CONSTRAINT `fk_favorites_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -73,6 +85,7 @@ CREATE TABLE `orders` (
   `buyer_id` INT,
   `seller_id` INT,
   `product_id` INT,
+  `tenant_id` INT DEFAULT NULL,
   `status` ENUM('pending', 'confirmed', 'completed', 'cancelled') DEFAULT 'pending',
   `amount` DECIMAL(10, 2),
   `deliveryAddress` VARCHAR(255),
@@ -84,6 +97,7 @@ CREATE TABLE `orders` (
   INDEX `idx_orders_seller_id` (`seller_id`),
   INDEX `idx_orders_product_id` (`product_id`),
   INDEX `idx_orders_status` (`status`),
+  INDEX `idx_orders_tenant` (`tenant_id`),
   CONSTRAINT `fk_orders_buyer_id` FOREIGN KEY (`buyer_id`) REFERENCES `users`(`id`),
   CONSTRAINT `fk_orders_seller_id` FOREIGN KEY (`seller_id`) REFERENCES `users`(`id`),
   CONSTRAINT `fk_orders_product_id` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`)
@@ -98,9 +112,11 @@ CREATE TABLE `addresses` (
   `campus` VARCHAR(100),
   `building` VARCHAR(100),
   `detail` VARCHAR(255),
+  `tenant_id` INT DEFAULT NULL,
   `isDefault` BOOLEAN DEFAULT FALSE,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_addresses_user_id` (`user_id`),
+  INDEX `idx_addresses_tenant` (`tenant_id`),
   CONSTRAINT `fk_addresses_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -113,10 +129,12 @@ CREATE TABLE `evaluations` (
   `target_type` ENUM('buyer', 'seller'),
   `rating` INT,
   `content` TEXT,
+  `tenant_id` INT DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_evaluations_order_id` (`order_id`),
   INDEX `idx_evaluations_user_id` (`user_id`),
   INDEX `idx_evaluations_target_id` (`target_id`),
+  INDEX `idx_evaluations_tenant` (`tenant_id`),
   CONSTRAINT `fk_evaluations_order_id` FOREIGN KEY (`order_id`) REFERENCES `orders`(`id`),
   CONSTRAINT `fk_evaluations_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`),
   CONSTRAINT `fk_evaluations_target_id` FOREIGN KEY (`target_id`) REFERENCES `users`(`id`)
@@ -132,10 +150,12 @@ CREATE TABLE `complaints` (
   `evidence` JSON,
   `status` ENUM('pending', 'processed') DEFAULT 'pending',
   `result` TEXT,
+  `tenant_id` INT DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_complaints_user_id` (`user_id`),
   INDEX `idx_complaints_status` (`status`),
+  INDEX `idx_complaints_tenant` (`tenant_id`),
   CONSTRAINT `fk_complaints_user_id` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -182,8 +202,10 @@ CREATE TABLE `announcements` (
   `content` TEXT,
   `isTop` BOOLEAN DEFAULT FALSE,
   `status` ENUM('published', 'draft') DEFAULT 'published',
+  `tenant_id` INT DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX `idx_announcements_status` (`status`)
+  INDEX `idx_announcements_status` (`status`),
+  INDEX `idx_announcements_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 轮播图表
@@ -194,9 +216,11 @@ CREATE TABLE `banners` (
   `link` VARCHAR(255),
   `sort` INT,
   `active` BOOLEAN DEFAULT TRUE,
+  `tenant_id` INT DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_banners_sort` (`sort`),
-  INDEX `idx_banners_active` (`active`)
+  INDEX `idx_banners_active` (`active`),
+  INDEX `idx_banners_tenant` (`tenant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 分类表
@@ -210,7 +234,7 @@ CREATE TABLE `categories` (
   INDEX `idx_categories_enabled` (`enabled`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 字典表（校区/成色等可配置选项）
+-- 字典表
 CREATE TABLE `dict_items` (
   `id` VARCHAR(64) PRIMARY KEY,
   `dict_type` VARCHAR(50) NOT NULL,
@@ -224,7 +248,7 @@ CREATE TABLE `dict_items` (
   INDEX `idx_dict_type_sort` (`dict_type`, `sort`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- AI 中心：提示词管理
+-- AI 提示词表
 CREATE TABLE `ai_prompts` (
   `id` VARCHAR(64) PRIMARY KEY,
   `name` VARCHAR(100) NOT NULL,
@@ -237,18 +261,6 @@ CREATE TABLE `ai_prompts` (
   INDEX `idx_ai_prompts_enabled` (`enabled`),
   INDEX `idx_ai_prompts_updated_at` (`updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- 默认 AI 提示词：搜索相关性 Top1（支持变量 {{query}}、{{candidates}}）
-INSERT INTO `ai_prompts` (`id`, `name`, `scene`, `content`, `enabled`, `created_at`, `updated_at`) VALUES
-(
-  'aip_search_top_product_default',
-  '搜索Top1推荐',
-  'search_top_product',
-  '你是校园二手平台搜索排序助手。\n用户搜索词：{{query}}\n请在候选商品中只选出最相关的一件商品。\n优先级：语义相关性 > 标题精确匹配 > 品类匹配 > 成色与价格合理性 > 热度(浏览/收藏) > 时间新近。\n严格输出 JSON，格式如下：\n{\"productId\": 123, \"reason\": \"一句话说明\", \"reply\": \"给用户的一句推荐解释\"}\n不要输出任何额外文本。\n候选商品：{{candidates}}',
-  1,
-  NOW(),
-  NOW()
-);
 
 -- 商品标签
 CREATE TABLE `product_tags` (
@@ -306,7 +318,7 @@ CREATE TABLE `chat_conversations` (
   CONSTRAINT `fk_chat_conv_product` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 会话成员（用于未读统计/权限）
+-- 会话成员
 CREATE TABLE `chat_conversation_members` (
   `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
   `conversation_id` BIGINT NOT NULL,
@@ -336,4 +348,283 @@ CREATE TABLE `chat_messages` (
   CONSTRAINT `fk_chat_msg_sender` FOREIGN KEY (`sender_id`) REFERENCES `users`(`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =============================================
+-- 2. 租户扩展表
+-- =============================================
+
+-- 租户表
+CREATE TABLE `tenants` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `code` VARCHAR(50) NOT NULL UNIQUE,
+  `name` VARCHAR(100) NOT NULL,
+  `short_name` VARCHAR(50),
+  `logo` VARCHAR(512),
+  `logo_dark` VARCHAR(512),
+  `description` TEXT,
+  `status` ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
+  `settings` JSON,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tenants_code` (`code`),
+  INDEX `idx_tenants_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 学校邮箱后缀表
+CREATE TABLE `tenant_email_domains` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `tenant_id` INT NOT NULL,
+  `domain` VARCHAR(100) NOT NULL,
+  `description` VARCHAR(255),
+  `status` ENUM('active', 'inactive') DEFAULT 'active',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_tenant_domain` (`tenant_id`, `domain`),
+  INDEX `idx_email_domains_tenant` (`tenant_id`),
+  INDEX `idx_email_domains_domain` (`domain`),
+  CONSTRAINT `fk_email_domains_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 角色表
+CREATE TABLE `roles` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `code` VARCHAR(50) NOT NULL UNIQUE,
+  `name` VARCHAR(100) NOT NULL,
+  `name_en` VARCHAR(100),
+  `description` TEXT,
+  `tenant_id` INT DEFAULT NULL,
+  `type` ENUM('system', 'tenant') DEFAULT 'system',
+  `sort` INT DEFAULT 0,
+  `status` ENUM('active', 'inactive') DEFAULT 'active',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_roles_code` (`code`),
+  INDEX `idx_roles_tenant` (`tenant_id`),
+  INDEX `idx_roles_type` (`type`),
+  CONSTRAINT `fk_roles_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 用户角色关联表
+CREATE TABLE `user_roles` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `role_id` INT NOT NULL,
+  `tenant_id` INT DEFAULT NULL,
+  `granted_by` INT,
+  `expires_at` DATETIME DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_user_role` (`user_id`, `role_id`, `tenant_id`),
+  INDEX `idx_user_roles_user` (`user_id`),
+  INDEX `idx_user_roles_role` (`role_id`),
+  INDEX `idx_user_roles_tenant` (`tenant_id`),
+  CONSTRAINT `fk_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_user_roles_role` FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_user_roles_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 权限表
+CREATE TABLE `permissions` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `code` VARCHAR(100) NOT NULL UNIQUE,
+  `name` VARCHAR(100) NOT NULL,
+  `module` VARCHAR(50) NOT NULL,
+  `description` TEXT,
+  `sort` INT DEFAULT 0,
+  `status` ENUM('active', 'inactive') DEFAULT 'active',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_permissions_code` (`code`),
+  INDEX `idx_permissions_module` (`module`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 角色权限关联表
+CREATE TABLE `role_permissions` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `role_id` INT NOT NULL,
+  `permission_id` INT NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uk_role_permission` (`role_id`, `permission_id`),
+  INDEX `idx_role_perms_role` (`role_id`),
+  INDEX `idx_role_perms_permission` (`permission_id`),
+  CONSTRAINT `fk_role_perms_role` FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_role_perms_permission` FOREIGN KEY (`permission_id`) REFERENCES `permissions`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 邮箱验证记录表
+CREATE TABLE `email_verifications` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `tenant_id` INT,
+  `code` VARCHAR(10) NOT NULL,
+  `scene` ENUM('email_verify', 'email_bind') NOT NULL,
+  `status` ENUM('pending', 'verified', 'expired') DEFAULT 'pending',
+  `expires_at` DATETIME NOT NULL,
+  `verified_at` DATETIME DEFAULT NULL,
+  `ip` VARCHAR(50),
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_email_verif_user` (`user_id`),
+  INDEX `idx_email_verif_email` (`email`),
+  INDEX `idx_email_verif_code` (`code`),
+  INDEX `idx_email_verif_expires` (`expires_at`),
+  CONSTRAINT `fk_email_verif_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_email_verif_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================
+-- 3. 初始化系统角色
+-- =============================================
+
+INSERT INTO `roles` (`code`, `name`, `name_en`, `description`, `tenant_id`, `type`, `sort`, `status`) VALUES
+('super_admin', '超级管理员', 'Super Admin', '系统超级管理员，拥有全部权限', NULL, 'system', 1, 'active'),
+('tenant_admin', '学校管理员', 'Tenant Admin', '学校管理员，管理本校用户和数据', NULL, 'tenant', 2, 'active'),
+('tenant_operator', '学校运营', 'Tenant Operator', '学校运营人员，管理本校日常运营', NULL, 'tenant', 3, 'active'),
+('verified_user', '已认证用户', 'Verified User', '已完成学校邮箱认证的用户', NULL, 'tenant', 4, 'active'),
+('user', '普通用户', 'User', '普通注册用户，未认证', NULL, 'system', 5, 'active');
+
+-- =============================================
+-- 4. 初始化系统权限
+-- =============================================
+
+INSERT INTO `permissions` (`code`, `name`, `module`, `description`, `sort`, `status`) VALUES
+-- 系统管理
+('system:tenant:manage', '租户管理', 'system', '管理系统租户', 1, 'active'),
+('system:role:manage', '角色管理', 'system', '管理系统角色', 2, 'active'),
+('system:permission:manage', '权限管理', 'system', '管理系统权限', 3, 'active'),
+('system:user:view', '用户查看', 'system', '查看所有用户', 4, 'active'),
+('system:user:manage', '用户管理', 'system', '管理所有用户', 5, 'active'),
+('system:settings:manage', '系统设置', 'system', '管理系统设置', 6, 'active'),
+('system:log:view', '日志查看', 'system', '查看系统日志', 7, 'active'),
+
+-- 租户管理
+('tenant:info:manage', '学校信息管理', 'tenant', '管理学校基本信息', 10, 'active'),
+('tenant:domain:manage', '邮箱域名管理', 'tenant', '管理学校邮箱域名', 11, 'active'),
+('tenant:user:view', '本校用户查看', 'tenant', '查看本校用户', 12, 'active'),
+('tenant:user:manage', '本校用户管理', 'tenant', '管理本校用户', 13, 'active'),
+('tenant:user:ban', '本校用户封禁', 'tenant', '封禁本校用户', 14, 'active'),
+
+-- 商品管理
+('product:view', '商品查看', 'product', '查看商品', 20, 'active'),
+('product:publish', '发布商品', 'product', '发布商品', 21, 'active'),
+('product:manage', '商品管理', 'product', '管理所有商品', 22, 'active'),
+('product:audit', '商品审核', 'product', '审核商品', 23, 'active'),
+
+-- 订单管理
+('order:view', '订单查看', 'order', '查看订单', 30, 'active'),
+('order:manage', '订单管理', 'order', '管理订单', 31, 'active'),
+
+-- 数据统计
+('stats:view', '数据查看', 'stats', '查看统计数据', 40, 'active'),
+('stats:export', '数据导出', 'stats', '导出数据', 41, 'active'),
+
+-- 内容管理
+('content:announcement:manage', '公告管理', 'content', '管理公告', 50, 'active'),
+('content:banner:manage', 'Banner管理', 'content', '管理轮播图', 51, 'active'),
+('content:category:manage', '分类管理', 'content', '管理分类', 52, 'active'),
+('content:dict:manage', '字典管理', 'content', '管理字典', 53, 'active'),
+
+-- 评价投诉
+('feedback:evaluation:manage', '评价管理', 'feedback', '管理评价', 60, 'active'),
+('feedback:complaint:manage', '投诉管理', 'feedback', '管理投诉', 61, 'active'),
+
+-- AI中心
+('ai:prompt:manage', 'AI提示词管理', 'ai', '管理AI提示词', 70, 'active');
+
+-- =============================================
+-- 5. 角色权限分配
+-- =============================================
+
+-- 超级管理员拥有所有权限
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.id, p.id FROM roles r, permissions p WHERE r.code = 'super_admin';
+
+-- 学校管理员拥有租户管理和内容管理权限
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.code = 'tenant_admin'
+AND p.code IN (
+  'tenant:info:manage', 'tenant:domain:manage',
+  'tenant:user:view', 'tenant:user:manage', 'tenant:user:ban',
+  'product:view', 'product:publish', 'product:manage', 'product:audit',
+  'order:view', 'order:manage',
+  'stats:view', 'stats:export',
+  'content:announcement:manage', 'content:banner:manage',
+  'content:category:manage', 'content:dict:manage',
+  'feedback:evaluation:manage', 'feedback:complaint:manage'
+);
+
+-- 已认证用户基础权限
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.code = 'verified_user'
+AND p.code IN ('product:view', 'product:publish', 'order:view');
+
+-- 普通用户基础权限
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.code = 'user'
+AND p.code IN ('product:view');
+
+-- =============================================
+-- 6. 创建默认租户
+-- =============================================
+
+INSERT INTO `tenants` (`code`, `name`, `short_name`, `description`, `status`) VALUES
+('demo', '示例大学', 'Demo', '系统默认租户，用于演示', 'active');
+
+INSERT INTO `tenant_email_domains` (`tenant_id`, `domain`, `description`, `status`) VALUES
+((SELECT id FROM tenants WHERE code = 'demo'), 'demo.edu.cn', '示例大学官方邮箱后缀', 'active'),
+((SELECT id FROM tenants WHERE code = 'demo'), 'stu.demo.edu.cn', '示例大学学生邮箱后缀', 'active');
+
+-- =============================================
+-- 7. 创建默认超级管理员用户
+-- =============================================
+-- 用户名：admin
+-- 密码：admin123
+-- 注意：密码哈希值为 bcrypt('admin123')
+
+INSERT INTO `users` (
+  `id`, `email`, `name`, `nickname`, `avatar`, `phone`, `gender`, `bio`,
+  `tenant_id`, `email_verified`, `role`, `status`, `password_hash`, `created_at`
+) VALUES (
+  1,
+  'admin@example.com',
+  '超级管理员',
+  '管理员',
+  '',
+  '13800138000',
+  'other',
+  '系统超级管理员',
+  NULL,
+  1,
+  'admin',
+  'active',
+  '$2a$10$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW',
+  NOW()
+);
+
+-- 为超级管理员分配超级管理员角色
+INSERT INTO `user_roles` (`user_id`, `role_id`, `tenant_id`, `granted_by`, `created_at`)
+VALUES (1, (SELECT id FROM roles WHERE code = 'super_admin'), NULL, 1, NOW());
+
+-- =============================================
+-- 8. 默认AI提示词
+-- =============================================
+
+INSERT INTO `ai_prompts` (`id`, `name`, `scene`, `content`, `enabled`, `created_at`, `updated_at`) VALUES
+(
+  'aip_search_top_product_default',
+  '搜索Top1推荐',
+  'search_top_product',
+  '你是校园二手平台搜索排序助手。\n用户搜索词：{{query}}\n请在候选商品中只选出最相关的一件商品。\n优先级：语义相关性 > 标题精确匹配 > 品类匹配 > 成色与价格合理性 > 热度(浏览/收藏) > 时间新近。\n严格输出 JSON，格式如下：\n{"productId": 123, "reason": "一句话说明", "reply": "给用户的一句推荐解释"}\n不要输出任何额外文本。\n候选商品：{{candidates}}',
+  1,
+  NOW(),
+  NOW()
+);
+
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- =============================================
+-- 初始化完成
+-- =============================================
+-- 默认超级管理员登录信息：
+-- 用户名：admin@example.com 或 13800138000
+-- 密码：admin123
+-- =============================================

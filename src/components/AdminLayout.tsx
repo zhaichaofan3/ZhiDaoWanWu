@@ -18,6 +18,8 @@ import {
   ArrowLeftRight,
   BookOpenCheck,
   BrainCircuit,
+  Building2,
+  School,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -28,18 +30,23 @@ import { clearAuth, getMe, getToken, type Me } from "@/lib/auth";
 import { useTheme } from "@/hooks/useTheme";
 import { useNavigate } from "react-router-dom";
 
-const menuItems = [
+const firstLevelMenuItems = [
   { path: "/admin", label: "数据大盘", icon: BarChart3, end: true },
+  { path: "/admin/tenants", label: "租户管理", icon: Building2 },
   { path: "/admin/users", label: "用户管理", icon: Users },
+  { path: "/admin/roles", label: "角色管理", icon: Users },
+  { path: "/admin/ai", label: "AI中心", icon: BrainCircuit },
+  { path: "/admin/logs", label: "操作日志", icon: FileText },
+];
+
+const secondLevelMenuItems = [
   { path: "/admin/products", label: "商品管理", icon: Package },
   { path: "/admin/orders", label: "订单管理", icon: ShoppingCart },
   { path: "/admin/complaints", label: "投诉处理", icon: AlertTriangle },
   { path: "/admin/evaluations", label: "评价管理", icon: Star },
   { path: "/admin/favorites", label: "收藏管理", icon: Heart },
-  { path: "/admin/logs", label: "操作日志", icon: FileText },
   { path: "/admin/categories", label: "分类管理", icon: ListTree },
   { path: "/admin/dicts", label: "字典管理", icon: BookOpenCheck },
-  { path: "/admin/ai", label: "AI中心", icon: BrainCircuit },
   { path: "/admin/announcements", label: "公告管理", icon: Megaphone },
   { path: "/admin/banners", label: "轮播图管理", icon: Image },
 ];
@@ -73,7 +80,8 @@ const AdminLayout = () => {
   }, []);
 
   const activeTitle = useMemo(() => {
-    const m = menuItems.find((x) => (x.end ? location.pathname === x.path : location.pathname.startsWith(x.path)));
+    const allItems = [...firstLevelMenuItems, ...secondLevelMenuItems];
+    const m = allItems.find((x) => (x.end ? location.pathname === x.path : location.pathname.startsWith(x.path)));
     return m?.label || "管理后台";
   }, [location.pathname]);
 
@@ -122,7 +130,25 @@ const AdminLayout = () => {
 
         <ScrollArea className="flex-1 py-2">
           <nav className="flex flex-col gap-1 px-2">
-            {menuItems.map((item) => (
+            <div className="text-xs font-medium text-muted-foreground px-2 py-1.5 mt-1">一级管理</div>
+            {firstLevelMenuItems.map((item) => (
+              <Link key={item.path} to={item.path} onClick={closeSidebarOnMobile}>
+                <Button
+                  variant={isActive(item.path, item.end) ? "secondary" : "ghost"}
+                  className={cn(
+                    "w-full gap-2",
+                    "justify-start",
+                    isActive(item.path, item.end) && "font-medium"
+                  )}
+                  size="sm"
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span>{item.label}</span>
+                </Button>
+              </Link>
+            ))}
+            <div className="text-xs font-medium text-muted-foreground px-2 py-1.5 mt-3">二级管理</div>
+            {secondLevelMenuItems.map((item) => (
               <Link key={item.path} to={item.path} onClick={closeSidebarOnMobile}>
                 <Button
                   variant={isActive(item.path, item.end) ? "secondary" : "ghost"}

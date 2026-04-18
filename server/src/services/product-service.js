@@ -23,6 +23,15 @@ export function buildProductService({ db }) {
     },
 
     async createProduct(ownerId, payload) {
+      const userRows = await db.query("SELECT tenant_id, email_verified FROM users WHERE id = ?", [ownerId]);
+      const user = userRows[0];
+      if (!user) {
+        return { status: 404, body: { message: "用户不存在" } };
+      }
+      if (!user.tenant_id || user.email_verified !== 1) {
+        return { status: 403, body: { message: "需要先选择学校并完成邮箱认证才能发布商品", code: "TENANT_NOT_VERIFIED" } };
+      }
+
       const { title, description, price, image_url, images, condition, category_id, campus } = payload ?? {};
       if (!title || price == null || !condition || !category_id || !campus) {
         return { status: 400, body: { message: "title, price, condition, category_id, campus 为必填" } };

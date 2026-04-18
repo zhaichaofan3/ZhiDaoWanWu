@@ -15,10 +15,29 @@ const Header = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [user, setUser] = useState<Me | null>(null);
+  const [tenant, setTenant] = useState<any>(null);
   const { resolvedTheme, toggle } = useTheme();
 
   useEffect(() => {
     setUser(getMe());
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const fetchTenant = async () => {
+      const currentUser = getMe();
+      if (currentUser?.tenantId) {
+        try {
+          const tenantData = await api.getTenantById(currentUser.tenantId);
+          setTenant(tenantData);
+        } catch (error) {
+          console.error("获取学校信息失败:", error);
+          setTenant(null);
+        }
+      } else {
+        setTenant(null);
+      }
+    };
+    fetchTenant();
   }, [location.pathname]);
 
   useEffect(() => {
@@ -78,9 +97,24 @@ const Header = () => {
       <div className="container flex h-14 items-center gap-4">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
-          <img src="/logos/logo_black.svg" alt="校园二手" className="h-6 w-auto dark:hidden" loading="eager" decoding="async" />
-          <img src="/logos/logo_white.svg" alt="校园二手" className="h-6 w-auto hidden dark:block" loading="eager" decoding="async" />
-          <span className="sr-only">校园二手</span>
+          {tenant?.logo ? (
+            <>
+              {resolvedTheme !== "dark" && tenant.logo && (
+                <img src={tenant.logo} alt={tenant.name} className="h-6 w-auto" loading="eager" decoding="async" />
+              )}
+              {resolvedTheme === "dark" && tenant.logo_dark ? (
+                <img src={tenant.logo_dark} alt={tenant.name} className="h-6 w-auto" loading="eager" decoding="async" />
+              ) : tenant.logo && (
+                <img src={tenant.logo} alt={tenant.name} className="h-6 w-auto" loading="eager" decoding="async" />
+              )}
+            </>
+          ) : (
+            <>
+              <img src="/logos/logo_black.svg" alt="校园二手" className="h-6 w-auto dark:hidden" loading="eager" decoding="async" />
+              <img src="/logos/logo_white.svg" alt="校园二手" className="h-6 w-auto hidden dark:block" loading="eager" decoding="async" />
+            </>
+          )}
+          <span className="sr-only">{tenant?.name || "校园二手"}</span>
         </Link>
 
         {/* Desktop Nav */}
