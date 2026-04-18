@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: shiwushe-eoxbazvjhlyk
+  labels:
+    cloud.sealos.io/app-deploy-manager: shiwushe
+spec:
+  ports:
+    - port: 80
+      targetPort: 80
+      name: eokvfqysuuwn
+      protocol: TCP
+    - port: 4000
+      targetPort: 4000
+      name: fsvuclwptdfo
+      protocol: TCP
+  selector:
+    app: shiwushe
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shiwushe
+  annotations:
+    originImageName: nginx
+    deploy.cloud.sealos.io/minReplicas: '1'
+    deploy.cloud.sealos.io/maxReplicas: '1'
+    deploy.cloud.sealos.io/resize: 0Gi
+  labels:
+    app: shiwushe
+    cloud.sealos.io/app-deploy-manager: shiwushe
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: shiwushe
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: shiwushe
+        restartTime: '20260418230033'
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: shiwushe
+          image: campus-second-hand-market:latest
+          env: []
+          resources:
+            requests:
+              cpu: 20m
+              memory: 102Mi
+            limits:
+              cpu: 200m
+              memory: 1024Mi
+          ports:
+            - containerPort: 80
+              name: eokvfqysuuwn
+            - containerPort: 4000
+              name: fsvuclwptdfo
+          imagePullPolicy: Always
+          volumeMounts: []
+      volumes: []
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: network-rodrohfxoalz
+  labels:
+    cloud.sealos.io/app-deploy-manager: shiwushe
+    cloud.sealos.io/app-deploy-manager-domain: jjtexippjlky
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: 32m
+    nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/client-body-buffer-size: 64k
+    nginx.ingress.kubernetes.io/proxy-buffer-size: 64k
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '300'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '300'
+    nginx.ingress.kubernetes.io/server-snippet: |
+      client_header_buffer_size 64k;
+      large_client_header_buffers 4 128k;
+spec:
+  rules:
+    - host: jjtexippjlky.sealoshzh.site
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: shiwushe-eoxbazvjhlyk
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - jjtexippjlky.sealoshzh.site
+      secretName: wildcard-cert
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: network-seaxsrpvzjal
+  labels:
+    cloud.sealos.io/app-deploy-manager: shiwushe
+    cloud.sealos.io/app-deploy-manager-domain: cmqfkbdjyxmc
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: 32m
+    nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/client-body-buffer-size: 64k
+    nginx.ingress.kubernetes.io/proxy-buffer-size: 64k
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '300'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '300'
+    nginx.ingress.kubernetes.io/server-snippet: |
+      client_header_buffer_size 64k;
+      large_client_header_buffers 4 128k;
+spec:
+  rules:
+    - host: cmqfkbdjyxmc.sealoshzh.site
+      http:
+        paths:
+          - pathType: Prefix
+            path: /
+            backend:
+              service:
+                name: shiwushe-eoxbazvjhlyk
+                port:
+                  number: 4000
+  tls:
+    - hosts:
+        - cmqfkbdjyxmc.sealoshzh.site
+      secretName: wildcard-cert
