@@ -8,12 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, X, ImagePlus, Brain, Sparkles } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
-import { getMe } from "@/lib/auth";
+import { getMe, updateMe } from "@/lib/auth";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { resolveAssetUrl } from "@/lib/assets";
 import { toast } from "sonner";
-import { SchoolVerificationPrompt } from "@/components/SchoolVerificationPrompt";
+import { StudentIdPrompt } from "@/components/SchoolVerificationPrompt";
 import { School } from "lucide-react";
 
 const PublishProduct = () => {
@@ -33,12 +33,83 @@ const PublishProduct = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [isVerified, setIsVerified] = useState(false);
+  const [tenants, setTenants] = useState<Array<{ id: number; code: string; name: string; short_name?: string }>>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
+  const [studentId, setStudentId] = useState("");
+
   useEffect(() => {
     const user = getMe();
-    if (user && (!user.tenantId || !user.emailVerified)) {
-      setShowVerifyDialog(true);
+    if (user) {
+      setIsVerified(!!user.tenantId && !!user.hasStudentId);
+      if (user.tenantId) {
+        setSelectedTenantId(user.tenantId);
+      }
     }
   }, []);
+
+  useEffect(() => {
+    const fetchTenants = async () => {
+      setLoading(true);
+      try {
+        const tenantList = await api.listTenants();
+        setTenants(tenantList);
+      } catch (error) {
+        console.error("获取学校列表失败:", error);
+        toast.error("获取学校列表失败");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTenants();
+  }, []);
+
+  const handleVerifySubmit = async () => {
+    if (!selectedTenantId) {
+      toast.error("请选择学校");
+      return;
+    }
+    if (!studentId.trim()) {
+      toast.error("请输入学号");
+      return;
+    }
+    if (studentId.trim().length < 4 || studentId.trim().length > 20) {
+      toast.error("学号长度应为4-20位");
+      return;
+    }
+    if (!/^[a-zA-Z0-9]+$/.test(studentId.trim())) {
+      toast.error("学号只能包含字母和数字");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      // 1. 选择学校
+      await api.setTenant({ tenantId: selectedTenantId });
+      
+      // 2. 登记学号
+      await api.setStudentId({ studentId: studentId.trim() });
+      
+      // 更新本地用户信息
+      const user = getMe();
+      if (user) {
+        updateMe({ 
+          ...user, 
+          tenantId: selectedTenantId, 
+          studentId: studentId.trim(), 
+          hasStudentId: true 
+        });
+      }
+      
+      toast.success("认证成功");
+      setIsVerified(true);
+    } catch (err: any) {
+      toast.error(err.message || "认证失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [aiInput, setAiInput] = useState("");
@@ -191,246 +262,293 @@ const PublishProduct = () => {
         <div className="container max-w-2xl py-4 md:py-6">
           <h1 className="text-xl font-bold text-foreground mb-6">发布闲置</h1>
 
-          <div className="space-y-6">
-            {/* Images */}
-            <div className="space-y-2">
-              <Label>商品图片 <span className="text-muted-foreground font-normal">（最多9张）</span></Label>
-              <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                {images.map((img, i) => (
-                  <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-muted border border-border">
-                    <img src={resolveAssetUrl(img)} alt="" className="h-full w-full object-cover" />
-                    <button
-                      onClick={() => setImages(images.filter((_, j) => j !== i))}
-                      className="absolute top-1 right-1 h-5 w-5 rounded-full bg-foreground/60 text-background flex items-center justify-center hover:bg-foreground/80"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-                {images.length < 9 && (
-                  <button
-                    onClick={addImageByUpload}
-                    className="aspect-square rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
-                    disabled={uploadingImage}
-                  >
-                    <ImagePlus className="h-6 w-6" />
-                    <span className="text-xs">{uploadingImage ? "上传中..." : `${images.length}/9`}</span>
-                  </button>
-                )}
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={onFileChange}
-              />
-            </div>
-
-            {/* Title */}
-            <div className="space-y-2">
-              <Label htmlFor="title">商品名称 <span className="text-destructive">*</span></Label>
-              <Input 
-                id="title" 
-                placeholder="请输入商品名称，如：iPad Air 5 256G 99新" 
-                maxLength={50}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </div>
-
-            {/* Category & Condition */}
-            <div className="grid grid-cols-2 gap-4">
+          {isVerified ? (
+            <div className="space-y-6">
+              {/* Images */}
               <div className="space-y-2">
-                <Label>商品分类 <span className="text-destructive">*</span></Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="选择分类" /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>新旧程度 <span className="text-destructive">*</span></Label>
-                <Select value={condition} onValueChange={setCondition}>
-                  <SelectTrigger><SelectValue placeholder="选择成色" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="全新">全新</SelectItem>
-                    <SelectItem value="几乎全新">几乎全新</SelectItem>
-                    <SelectItem value="轻微使用">轻微使用</SelectItem>
-                    <SelectItem value="明显使用">明显使用</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Price */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">出售价格 <span className="text-destructive">*</span></Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-                  <Input 
-                    id="price" 
-                    type="number" 
-                    placeholder="0.00" 
-                    className="pl-7" 
-                    min={0}
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="originalPrice">原价</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
-                  <Input 
-                    id="originalPrice" 
-                    type="number" 
-                    placeholder="0.00" 
-                    className="pl-7" 
-                    min={0}
-                    value={originalPrice}
-                    onChange={(e) => setOriginalPrice(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Campus */}
-            <div className="space-y-2">
-              <Label>交易校区 <span className="text-destructive">*</span></Label>
-              <Select value={campus} onValueChange={setCampus}>
-                <SelectTrigger><SelectValue placeholder="选择校区" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="东校区">东校区</SelectItem>
-                  <SelectItem value="西校区">西校区</SelectItem>
-                  <SelectItem value="南校区">南校区</SelectItem>
-                  <SelectItem value="北校区">北校区</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Description */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="description">商品描述 <span className="text-destructive">*</span></Label>
-                <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="secondary" size="sm" className="gap-1">
-                      <Brain className="h-4 w-4" />
-                      AI 帮写
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-primary" />
-                        AI 帮写商品介绍
-                      </DialogTitle>
-                      <DialogDescription>
-                        输入商品描述或上传图片，AI 会帮你生成完整且简练的商品介绍，并根据市场情况估计价格。
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="ai-input">商品描述或图片</Label>
-                        <Textarea
-                          id="ai-input"
-                          placeholder="描述商品的品牌、型号、使用情况等，如：iPad Air 5 256G 99新，使用3个月"
-                          rows={3}
-                          value={aiInput}
-                          onChange={(e) => setAiInput(e.target.value)}
-                        />
-                      </div>
-                      <Button
-                        className="w-full"
-                        onClick={generateAiContent}
-                        disabled={aiLoading}
+                <Label>商品图片 <span className="text-muted-foreground font-normal">（最多9张）</span></Label>
+                <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                  {images.map((img, i) => (
+                    <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-muted border border-border">
+                      <img src={resolveAssetUrl(img)} alt="" className="h-full w-full object-cover" />
+                      <button
+                        onClick={() => setImages(images.filter((_, j) => j !== i))}
+                        className="absolute top-1 right-1 h-5 w-5 rounded-full bg-foreground/60 text-background flex items-center justify-center hover:bg-foreground/80"
                       >
-                        {aiLoading ? "生成中..." : "开始生成"}
-                      </Button>
-                      {aiError && (
-                        <div className="text-destructive text-sm">{aiError}</div>
-                      )}
-                      {aiGeneratedDescription && (
-                        <div className="space-y-4 pt-4 border-t border-border">
-                          <div className="space-y-2">
-                            <Label>AI 生成的商品描述</Label>
-                            <div className="relative">
-                              <Textarea
-                                readOnly
-                                value={aiGeneratedDescription
-                                  .split("\n")
-                                  .filter((line) => !line.includes("分类") && !line.includes("成色") && !line.includes("价格"))
-                                  .join("\n")}
-                                rows={6}
-                                className={aiStreaming ? "transition-opacity duration-300 opacity-95" : ""}
-                              />
-                              {aiStreaming && (
-                                <span className="absolute right-3 bottom-3 inline-block h-4 w-[2px] bg-primary animate-pulse" />
-                              )}
-                            </div>
-                          </div>
-                          <Button
-                            className="w-full gap-2"
-                            onClick={applyAiContent}
-                          >
-                            <Sparkles className="h-4 w-4" />
-                            应用到表单
-                          </Button>
-                        </div>
-                      )}
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
-                  </DialogContent>
-                </Dialog>
+                  ))}
+                  {images.length < 9 && (
+                    <button
+                      onClick={addImageByUpload}
+                      className="aspect-square rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                      disabled={uploadingImage}
+                    >
+                      <ImagePlus className="h-6 w-6" />
+                      <span className="text-xs">{uploadingImage ? "上传中..." : `${images.length}/9`}</span>
+                    </button>
+                  )}
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onFileChange}
+                />
               </div>
-              <Textarea
-                id="description"
-                placeholder="描述商品的使用情况、购买时间、转手原因等，让买家更了解你的宝贝~"
-                rows={5}
-                maxLength={500}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
 
-            {/* Actions */}
-            <div className="flex gap-3 pt-4 border-t border-border">
-              <Button variant="outline" className="flex-1">存为草稿</Button>
-              <Button 
-                className="flex-1 gap-2"
-                onClick={handleSubmit}
-                disabled={submitting}
-              >
-                {submitting ? "发布中..." : (
-                  <>
-                    <Upload className="h-4 w-4" /> 提交发布
-                  </>
-                )}
-              </Button>
+              {/* Title */}
+              <div className="space-y-2">
+                <Label htmlFor="title">商品名称 <span className="text-destructive">*</span></Label>
+                <Input 
+                  id="title" 
+                  placeholder="请输入商品名称，如：iPad Air 5 256G 99新" 
+                  maxLength={50}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+
+              {/* Category & Condition */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>商品分类 <span className="text-destructive">*</span></Label>
+                  <Select value={categoryId} onValueChange={setCategoryId}>
+                    <SelectTrigger><SelectValue placeholder="选择分类" /></SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>新旧程度 <span className="text-destructive">*</span></Label>
+                  <Select value={condition} onValueChange={setCondition}>
+                    <SelectTrigger><SelectValue placeholder="选择成色" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="全新">全新</SelectItem>
+                      <SelectItem value="几乎全新">几乎全新</SelectItem>
+                      <SelectItem value="轻微使用">轻微使用</SelectItem>
+                      <SelectItem value="明显使用">明显使用</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Price */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="price">出售价格 <span className="text-destructive">*</span></Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
+                    <Input 
+                      id="price" 
+                      type="number" 
+                      placeholder="0.00" 
+                      className="pl-7" 
+                      min={0}
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="originalPrice">原价</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">¥</span>
+                    <Input 
+                      id="originalPrice" 
+                      type="number" 
+                      placeholder="0.00" 
+                      className="pl-7" 
+                      min={0}
+                      value={originalPrice}
+                      onChange={(e) => setOriginalPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Campus */}
+              <div className="space-y-2">
+                <Label>交易校区 <span className="text-destructive">*</span></Label>
+                <Select value={campus} onValueChange={setCampus}>
+                  <SelectTrigger><SelectValue placeholder="选择校区" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="东校区">东校区</SelectItem>
+                    <SelectItem value="西校区">西校区</SelectItem>
+                    <SelectItem value="南校区">南校区</SelectItem>
+                    <SelectItem value="北校区">北校区</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="description">商品描述 <span className="text-destructive">*</span></Label>
+                  <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="secondary" size="sm" className="gap-1">
+                        <Brain className="h-4 w-4" />
+                        AI 帮写
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                          <Sparkles className="h-5 w-5 text-primary" />
+                          AI 帮写商品介绍
+                        </DialogTitle>
+                        <DialogDescription>
+                          输入商品描述或上传图片，AI 会帮你生成完整且简练的商品介绍，并根据市场情况估计价格。
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="ai-input">商品描述或图片</Label>
+                          <Textarea
+                            id="ai-input"
+                            placeholder="描述商品的品牌、型号、使用情况等，如：iPad Air 5 256G 99新，使用3个月"
+                            rows={3}
+                            value={aiInput}
+                            onChange={(e) => setAiInput(e.target.value)}
+                          />
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={generateAiContent}
+                          disabled={aiLoading}
+                        >
+                          {aiLoading ? "生成中..." : "开始生成"}
+                        </Button>
+                        {aiError && (
+                          <div className="text-destructive text-sm">{aiError}</div>
+                        )}
+                        {aiGeneratedDescription && (
+                          <div className="space-y-4 pt-4 border-t border-border">
+                            <div className="space-y-2">
+                              <Label>AI 生成的商品描述</Label>
+                              <div className="relative">
+                                <Textarea
+                                  readOnly
+                                  value={aiGeneratedDescription
+                                    .split("\n")
+                                    .filter((line) => !line.includes("分类") && !line.includes("成色") && !line.includes("价格"))
+                                    .join("\n")}
+                                  rows={6}
+                                  className={aiStreaming ? "transition-opacity duration-300 opacity-95" : ""}
+                                />
+                                {aiStreaming && (
+                                  <span className="absolute right-3 bottom-3 inline-block h-4 w-[2px] bg-primary animate-pulse" />
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              className="w-full gap-2"
+                              onClick={applyAiContent}
+                            >
+                              <Sparkles className="h-4 w-4" />
+                              应用到表单
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+                <Textarea
+                  id="description"
+                  placeholder="描述商品的使用情况、购买时间、转手原因等，让买家更了解你的宝贝~"
+                  rows={5}
+                  maxLength={500}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t border-border">
+                <Button variant="outline" className="flex-1">存为草稿</Button>
+                <Button 
+                  className="flex-1 gap-2"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                >
+                  {submitting ? "发布中..." : (
+                    <>
+                      <Upload className="h-4 w-4" /> 提交发布
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="rounded-lg border border-border p-6">
+                <div className="text-center mb-6">
+                  <School className="h-12 w-12 mx-auto mb-4 text-primary" />
+                  <h2 className="text-lg font-semibold mb-2">需要先完成认证</h2>
+                  <p className="text-muted-foreground">
+                    为了保障交易安全，发布商品前需要先选择学校和登记学号
+                  </p>
+                </div>
+                
+                <div className="space-y-6">
+                  {/* 学校选择 */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="school-select">选择学校 <span className="text-destructive">*</span></Label>
+                      <Select 
+                        value={selectedTenantId?.toString() || ""} 
+                        onValueChange={(value) => setSelectedTenantId(value ? Number(value) : null)}
+                        disabled={loading || submitting}
+                      >
+                        <SelectTrigger id="school-select">
+                          <SelectValue placeholder="请选择您的学校" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tenants.map((tenant) => (
+                            <SelectItem key={tenant.id} value={tenant.id.toString()}>
+                              {tenant.name} {tenant.short_name && `(${tenant.short_name})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  {/* 学号登记 */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="student-id">学号 <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="student-id"
+                        placeholder="请输入您的学号"
+                        value={studentId}
+                        onChange={(e) => setStudentId(e.target.value)}
+                        disabled={submitting}
+                      />
+                    </div>
+                  </div>
+                  
+                  <Button
+                    className="w-full"
+                    onClick={handleVerifySubmit}
+                    disabled={submitting || !selectedTenantId || !studentId.trim()}
+                  >
+                    {submitting ? "认证中..." : "完成认证"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
       <Footer />
-      <Dialog open={showVerifyDialog} onOpenChange={setShowVerifyDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <School className="h-5 w-5" />
-              完成学校认证
-            </DialogTitle>
-            <DialogDescription>
-              需要先选择学校并完成邮箱认证才能发布商品
-            </DialogDescription>
-          </DialogHeader>
-          <SchoolVerificationPrompt onVerified={() => setShowVerifyDialog(false)} />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

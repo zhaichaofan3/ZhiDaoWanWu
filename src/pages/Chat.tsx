@@ -221,6 +221,36 @@ const Chat = () => {
         </div>
       </ScrollArea>
 
+      {/* Quick messages */}
+      <div className="shrink-0 border-t border-border bg-card px-4 py-2">
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            variant="secondary" 
+            size="sm" 
+            className="text-xs" 
+            onClick={() => setInputValue("我可以租你的商品吗？")}
+          >
+            我可以租你的商品吗？
+          </Button>
+          <Button 
+            variant="secondary" 
+            size="sm" 
+            className="text-xs" 
+            onClick={() => setInputValue("我可以用其他物品交换吗？")}
+          >
+            我可以用其他物品交换吗？
+          </Button>
+          <Button 
+            variant="secondary" 
+            size="sm" 
+            className="text-xs" 
+            onClick={() => setInputValue("成色怎么样？")}
+          >
+            成色怎么样？
+          </Button>
+        </div>
+      </div>
+
       {/* Input */}
       <div className="shrink-0 border-t border-border bg-card px-4 py-3">
         <div className="flex items-center gap-2">

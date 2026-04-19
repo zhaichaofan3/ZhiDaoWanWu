@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { ArrowLeft, MessageCircle, Package, MapPin, Clock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { getMe } from "@/lib/auth";
@@ -21,22 +22,28 @@ const statusMap: Record<string, string> = {
   "cancelled": "已取消"
 };
 
+const deliveryMethodOptions = [
+  { value: "buyer_pickup", label: "买家自提" },
+  { value: "seller_delivery", label: "卖家配送" },
+  { value: "campus_runner", label: "校园跑腿员" }
+];
+
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [myEvaluation, setMyEvaluation] = useState<any | null>(null);
+  const [selectedDeliveryMethod, setSelectedDeliveryMethod] = useState<string>("buyer_pickup");
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchOrder = async () => {
       if (!id) return;
-      
+
       setLoading(true);
       try {
         const response = await api.getOrder(Number(id));
-        // 转换API返回的数据格式以匹配前端类型
         const formattedOrder: Order = {
           id: response.id.toString(),
           orderNo: response.orderNo || `TX${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${String(response.id).padStart(3, "0")}`,
@@ -76,9 +83,11 @@ const OrderDetail = () => {
           createdAt: response.created_at || new Date().toISOString().split('T')[0],
           deliveryAddress: response.deliveryAddress || "",
           deliveryTime: response.deliveryTime || "",
+          deliveryMethod: response.deliveryMethod || "buyer_pickup",
           timeline: response.timeline || []
         };
         setOrder(formattedOrder);
+        setSelectedDeliveryMethod(response.deliveryMethod || "buyer_pickup");
         if (response.status === "completed") {
           try {
             const e = await api.getMyEvaluation(Number(id));
@@ -146,7 +155,6 @@ const OrderDetail = () => {
     setUpdating(true);
     try {
       await api.updateOrderStatus(Number(id), newStatus);
-      // 刷新订单信息
       const response = await api.getOrder(Number(id));
       const formattedOrder: Order = {
         ...order,
@@ -162,16 +170,29 @@ const OrderDetail = () => {
     }
   };
 
+  const handleUpdateDeliveryMethod = async () => {
+    if (!order || order.deliveryMethod === selectedDeliveryMethod) return;
+    setUpdating(true);
+    try {
+      await api.updateOrderDeliveryMethod(Number(id), selectedDeliveryMethod);
+      setOrder({ ...order, deliveryMethod: selectedDeliveryMethod });
+      toast.success("配送方式已更新");
+    } catch (error) {
+      toast.error("更新配送方式失败，请重试");
+      setSelectedDeliveryMethod(order.deliveryMethod || "buyer_pickup");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
       <main className="flex-1 container py-6 max-w-2xl">
-        {/* Back */}
         <Link to="/profile?tab=orders" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
           <ArrowLeft className="h-4 w-4" /> 返回订单列表
         </Link>
 
-        {/* Status */}
         <Card className="mb-4">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-4">
@@ -187,7 +208,6 @@ const OrderDetail = () => {
               </Badge>
             </div>
 
-            {/* Progress */}
             {!isCancelled && (
               <div className="flex items-center gap-0">
                 {statusSteps.map((step, i) => (
@@ -212,7 +232,6 @@ const OrderDetail = () => {
           </CardContent>
         </Card>
 
-        {/* Product */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-1.5">
@@ -235,7 +254,6 @@ const OrderDetail = () => {
           </CardContent>
         </Card>
 
-        {/* Other party */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">{isBuyer ? "卖家信息" : "买家信息"}</CardTitle>
@@ -267,7 +285,6 @@ const OrderDetail = () => {
           </CardContent>
         </Card>
 
-        {/* Delivery info */}
         {order.deliveryAddress && (
           <Card className="mb-4">
             <CardHeader className="pb-3">
@@ -275,14 +292,37 @@ const OrderDetail = () => {
                 <MapPin className="h-4 w-4" /> 交付信息
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               <p className="text-sm text-foreground">{order.deliveryAddress}</p>
-              <p className="text-xs text-muted-foreground mt-1">{order.deliveryTime}</p>
+              <p className="text-xs text-muted-foreground">交付时间：{order.deliveryTime}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">配送方式：</span>
+                <Select
+                  value={selectedDeliveryMethod}
+                  onValueChange={setSelectedDeliveryMethod}
+                  disabled={order.status !== "pending" || !isBuyer}
+                >
+                  <SelectTrigger className="h-8 w-[140px]">
+                    <SelectValue placeholder="选择配送方式" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deliveryMethodOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {order.status === "pending" && isBuyer && order.deliveryMethod !== selectedDeliveryMethod && (
+                  <Button size="sm" onClick={handleUpdateDeliveryMethod} disabled={updating}>
+                    {updating ? "更新中..." : "更新"}
+                  </Button>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Timeline */}
         <Card className="mb-4">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm flex items-center gap-1.5">
@@ -307,7 +347,6 @@ const OrderDetail = () => {
           </CardContent>
         </Card>
 
-        {/* Actions */}
         {order.status === "pending" && !isBuyer && (
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => handleUpdateStatus("cancelled")} disabled={updating}>

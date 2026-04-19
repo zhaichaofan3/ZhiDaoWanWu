@@ -105,7 +105,7 @@ export const api = {
 
   authLoginBySms: (data: { phone: string; code: string }) =>
     request<{
-      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; emailVerified: boolean };
+      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; hasStudentId: boolean };
       token: string;
     }>("/api/auth/sms/login", {
       method: "POST",
@@ -120,7 +120,7 @@ export const api = {
 
   login: (data: { phone: string; password: string }) =>
     request<{
-      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; emailVerified: boolean };
+      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; hasStudentId: boolean };
       token: string;
     }>("/api/auth/login", {
       method: "POST",
@@ -137,7 +137,7 @@ export const api = {
     avatar?: string;
   }) =>
     request<{
-      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; emailVerified: boolean };
+      user: { id: number; nickname: string; role: "user" | "admin"; tenantId?: number | null; hasStudentId: boolean };
       token: string;
     }>("/api/auth/register", {
       method: "POST",
@@ -160,6 +160,12 @@ export const api = {
         trades: number;
       };
     }>("/api/users/me/stats").then((r) => r.stats),
+
+  getMyPoints: () =>
+    request<{
+      points: { points: number; total_points: number };
+      logs: any[];
+    }>("/api/users/me/points"),
 
   updateProfile: (data: {
     nickname: string;
@@ -214,25 +220,24 @@ export const api = {
       method: "PATCH",
     }),
 
-  sendEmailVerificationCode: (data: { email: string }) =>
-    request<{ message: string; tenantName?: string }>("/api/auth/email/send", {
-      method: "POST",
+  setStudentId: (data: { studentId: string }) =>
+    request<{ message: string }>('/api/users/me/student-id', {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  verifyEmailCode: (data: { email: string; code: string }) =>
-    request<{ message: string }>("/api/auth/email/verify", {
-      method: "POST",
+  setTenant: (data: { tenantId: number }) =>
+    request<{ message: string }>('/api/users/me/tenant', {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  getEmailVerificationStatus: () =>
-    request<{
-      emailVerified: boolean;
-      email: string;
-      tenantId: number | null;
-      verifications: any[];
-    }>("/api/auth/email/status"),
+  // Public APIs
+  listTenants: () =>
+    request<{ list: Array<{ id: number; code: string; name: string; short_name?: string; logo?: string }> }>('/api/tenants').then((r) => r.list),
+
+  getTenantById: (id: number) =>
+    request<{ id: number; code: string; name: string; short_name?: string; logo?: string; logo_dark?: string }>(`/api/tenants/${id}`),
 
   // Admin
   adminListUsers: () =>
@@ -265,7 +270,7 @@ export const api = {
         status: "active" | "banned";
         created_at: string;
         tenant_id?: number | null;
-        email_verified?: number;
+        student_id?: string | null;
       };
       stats: { products: number; orders: number; favorites: number };
       products: any[];
@@ -688,11 +693,13 @@ export const api = {
     product_id: number;
     deliveryAddress: string;
     deliveryTime: string;
+    deliveryMethod: string;
   }) =>
     request("/api/orders", {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
 
   listOrders: (userId: number) =>
     request<
@@ -712,6 +719,12 @@ export const api = {
     request<{ message: string }>(`/api/orders/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
+    }),
+
+  updateOrderDeliveryMethod: (id: number, deliveryMethod: string) =>
+    request<{ message: string }>(`/api/orders/${id}/delivery-method`, {
+      method: "PATCH",
+      body: JSON.stringify({ deliveryMethod }),
     }),
 
   createEvaluation: (orderId: number, data: {
@@ -976,23 +989,6 @@ export const api = {
       method: "DELETE",
     }),
 
-  adminAddTenantDomain: (tenantId: number, data: { domain: string; description?: string }) =>
-    request<{ id: number; message: string }>(`/api/admin/tenants/${tenantId}/domains`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  adminUpdateTenantDomain: (tenantId: number, domainId: number, data: { status?: string; description?: string }) =>
-    request<{ message: string }>(`/api/admin/tenants/${tenantId}/domains/${domainId}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  adminDeleteTenantDomain: (tenantId: number, domainId: number) =>
-    request<{ message: string }>(`/api/admin/tenants/${tenantId}/domains/${domainId}`, {
-      method: "DELETE",
-    }),
-
   adminGetRoles: (params?: { type?: string; tenantId?: number }) => {
     const q = new URLSearchParams();
     if (params?.type) q.set("type", params.type);
@@ -1034,29 +1030,46 @@ export const api = {
   adminGetUserPermissions: (userId: number, tenantId?: number) =>
     request<{ list: string[] }>(`/api/admin/users/${userId}/permissions${tenantId ? `?tenantId=${tenantId}` : ""}`).then((r) => r.list),
 
-  // Tenant Admin API
-  tenantInfo: () =>
-    request<any>("/api/tenant/info"),
+  adminGetPointRules: () =>
+    request<{ list: any[] }>("/api/admin/points/rules").then((r) => r.list),
 
-  tenantDomains: () =>
-    request<{ list: any[] }>("/api/tenant/domains").then((r) => r),
+  adminGetPointRule: (id: number) =>
+    request<{ item: any }>(`/api/admin/points/rules/${id}`).then((r) => r.item),
 
-  tenantAddDomain: (data: { domain: string; description?: string; status?: string }) =>
-    request<{ id: number; message: string }>("/api/tenant/domains", {
+  adminCreatePointRule: (data: { code: string; name: string; description?: string; points: number; enabled?: boolean; tenantId?: number }) =>
+    request<{ item: any }>("/api/admin/points/rules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }).then((r) => r.item),
+
+  adminUpdatePointRule: (id: number, data: { code?: string; name?: string; description?: string; points?: number; enabled?: boolean; tenantId?: number }) =>
+    request<{ item: any }>(`/api/admin/points/rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }).then((r) => r.item),
+
+  adminDeletePointRule: (id: number) =>
+    request<void>(`/api/admin/points/rules/${id}`, { method: "DELETE" }),
+
+  adminGetUserPoints: (userId: number) =>
+    request<{ points: any; logs: any[] }>(`/api/admin/users/${userId}/points`).then((r) => r),
+
+  adminAdjustUserPoints: (userId: number, data: { points: number; reason: string }) =>
+    request<{ message: string; newPoints: number; newTotalPoints: number }>(`/api/admin/users/${userId}/points/adjust`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  tenantUpdateDomain: (domainId: number, data: { status?: string; description?: string }) =>
-    request<{ message: string }>(`/api/tenant/domains/${domainId}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
+  adminGetUserPointLogs: (userId: number, limit?: number) => {
+    const q = new URLSearchParams();
+    if (limit) q.set("limit", String(limit));
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<{ list: any[] }>(`/api/admin/users/${userId}/points/logs${suffix}`).then((r) => r.list);
+  },
 
-  tenantDeleteDomain: (domainId: number) =>
-    request<{ message: string }>(`/api/tenant/domains/${domainId}`, {
-      method: "DELETE",
-    }),
+  // Tenant Admin API
+  tenantInfo: () =>
+    request<any>("/api/tenant/info"),
 
   tenantUsers: (params?: { status?: string; keyword?: string; page?: number; limit?: number }) => {
     const q = new URLSearchParams();

@@ -18,7 +18,6 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- 用户表
 CREATE TABLE `users` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `email` VARCHAR(255),
   `name` VARCHAR(255),
   `nickname` VARCHAR(255),
   `avatar` VARCHAR(512),
@@ -26,15 +25,13 @@ CREATE TABLE `users` (
   `gender` ENUM('male', 'female', 'other') DEFAULT 'other',
   `bio` TEXT,
   `tenant_id` INT DEFAULT NULL,
-  `email_verified` TINYINT(1) DEFAULT 0,
-  `email_verified_at` DATETIME DEFAULT NULL,
   `student_id` VARCHAR(50) DEFAULT NULL,
   `role` ENUM('user', 'admin') DEFAULT 'user',
   `status` ENUM('active', 'banned') DEFAULT 'active',
   `password_hash` VARCHAR(255),
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   INDEX `idx_users_tenant` (`tenant_id`),
-  INDEX `idx_users_email_verified` (`email_verified`)
+  INDEX `idx_users_student_id` (`student_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 商品表
@@ -369,20 +366,6 @@ CREATE TABLE `tenants` (
   INDEX `idx_tenants_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 学校邮箱后缀表
-CREATE TABLE `tenant_email_domains` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `tenant_id` INT NOT NULL,
-  `domain` VARCHAR(100) NOT NULL,
-  `description` VARCHAR(255),
-  `status` ENUM('active', 'inactive') DEFAULT 'active',
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY `uk_tenant_domain` (`tenant_id`, `domain`),
-  INDEX `idx_email_domains_tenant` (`tenant_id`),
-  INDEX `idx_email_domains_domain` (`domain`),
-  CONSTRAINT `fk_email_domains_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- 角色表
 CREATE TABLE `roles` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
@@ -447,27 +430,6 @@ CREATE TABLE `role_permissions` (
   CONSTRAINT `fk_role_perms_permission` FOREIGN KEY (`permission_id`) REFERENCES `permissions`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 邮箱验证记录表
-CREATE TABLE `email_verifications` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `user_id` INT NOT NULL,
-  `email` VARCHAR(255) NOT NULL,
-  `tenant_id` INT,
-  `code` VARCHAR(10) NOT NULL,
-  `scene` ENUM('email_verify', 'email_bind') NOT NULL,
-  `status` ENUM('pending', 'verified', 'expired') DEFAULT 'pending',
-  `expires_at` DATETIME NOT NULL,
-  `verified_at` DATETIME DEFAULT NULL,
-  `ip` VARCHAR(50),
-  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-  INDEX `idx_email_verif_user` (`user_id`),
-  INDEX `idx_email_verif_email` (`email`),
-  INDEX `idx_email_verif_code` (`code`),
-  INDEX `idx_email_verif_expires` (`expires_at`),
-  CONSTRAINT `fk_email_verif_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_email_verif_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants`(`id`) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- =============================================
 -- 3. 初始化系统角色
 -- =============================================
@@ -476,8 +438,8 @@ INSERT INTO `roles` (`code`, `name`, `name_en`, `description`, `tenant_id`, `typ
 ('super_admin', '超级管理员', 'Super Admin', '系统超级管理员，拥有全部权限', NULL, 'system', 1, 'active'),
 ('tenant_admin', '学校管理员', 'Tenant Admin', '学校管理员，管理本校用户和数据', NULL, 'tenant', 2, 'active'),
 ('tenant_operator', '学校运营', 'Tenant Operator', '学校运营人员，管理本校日常运营', NULL, 'tenant', 3, 'active'),
-('verified_user', '已认证用户', 'Verified User', '已完成学校邮箱认证的用户', NULL, 'tenant', 4, 'active'),
-('user', '普通用户', 'User', '普通注册用户，未认证', NULL, 'system', 5, 'active');
+('user', '普通用户', 'User', '普通注册用户', NULL, 'system', 4, 'active'),
+('verified_user', '已认证用户', 'Verified User', '已完成学号认证的用户', NULL, 'system', 5, 'active');
 
 -- =============================================
 -- 4. 初始化系统权限
@@ -540,7 +502,7 @@ INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 SELECT r.id, p.id FROM roles r, permissions p
 WHERE r.code = 'tenant_admin'
 AND p.code IN (
-  'tenant:info:manage', 'tenant:domain:manage',
+  'tenant:info:manage',
   'tenant:user:view', 'tenant:user:manage', 'tenant:user:ban',
   'product:view', 'product:publish', 'product:manage', 'product:audit',
   'order:view', 'order:manage',
@@ -550,17 +512,21 @@ AND p.code IN (
   'feedback:evaluation:manage', 'feedback:complaint:manage'
 );
 
--- 已认证用户基础权限
-INSERT INTO `role_permissions` (`role_id`, `permission_id`)
-SELECT r.id, p.id FROM roles r, permissions p
-WHERE r.code = 'verified_user'
-AND p.code IN ('product:view', 'product:publish', 'order:view');
-
 -- 普通用户基础权限
 INSERT INTO `role_permissions` (`role_id`, `permission_id`)
 SELECT r.id, p.id FROM roles r, permissions p
 WHERE r.code = 'user'
 AND p.code IN ('product:view');
+
+-- 已认证用户权限
+INSERT INTO `role_permissions` (`role_id`, `permission_id`)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.code = 'verified_user'
+AND p.code IN (
+  'product:view',
+  'product:publish',
+  'order:view'
+);
 
 -- =============================================
 -- 6. 创建默认租户
@@ -568,10 +534,6 @@ AND p.code IN ('product:view');
 
 INSERT INTO `tenants` (`code`, `name`, `short_name`, `description`, `status`) VALUES
 ('demo', '示例大学', 'Demo', '系统默认租户，用于演示', 'active');
-
-INSERT INTO `tenant_email_domains` (`tenant_id`, `domain`, `description`, `status`) VALUES
-((SELECT id FROM tenants WHERE code = 'demo'), 'demo.edu.cn', '示例大学官方邮箱后缀', 'active'),
-((SELECT id FROM tenants WHERE code = 'demo'), 'stu.demo.edu.cn', '示例大学学生邮箱后缀', 'active');
 
 -- =============================================
 -- 7. 创建默认超级管理员用户
@@ -581,8 +543,8 @@ INSERT INTO `tenant_email_domains` (`tenant_id`, `domain`, `description`, `statu
 -- 注意：密码哈希值为 bcrypt('admin123')
 
 INSERT INTO `users` (
-  `id`, `email`, `name`, `nickname`, `avatar`, `phone`, `gender`, `bio`,
-  `tenant_id`, `email_verified`, `role`, `status`, `password_hash`, `created_at`
+  `id`, `name`, `nickname`, `avatar`, `phone`, `gender`, `bio`,
+  `tenant_id`, `role`, `status`, `password_hash`, `created_at`
 ) VALUES (
   1,
   'admin@example.com',

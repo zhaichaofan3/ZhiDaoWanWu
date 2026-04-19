@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Ban, RotateCcw, Shield, ShieldCheck, RefreshCw, KeyRound, Upload, Phone, Eye, Check, AlertCircle, CheckCircle, Building2 } from "lucide-react";
+import { ArrowLeft, Ban, RotateCcw, Shield, ShieldCheck, RefreshCw, KeyRound, Upload, Phone, Eye, Check, AlertCircle, CheckCircle, Building2, Coins } from "lucide-react";
 import { resolveAssetUrl } from "@/lib/assets";
 import { useUtc8Time } from "@/hooks/use-utc8-time";
 import OrderDetailDialog from "@/components/OrderDetailDialog";
@@ -84,6 +84,15 @@ export default function UserDetail() {
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [drawerSuccess, setDrawerSuccess] = useState<string | null>(null);
 
+  const [points, setPoints] = useState<any>(null);
+  const [pointLogs, setPointLogs] = useState<any[]>([]);
+  const [pointsLoading, setPointsLoading] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustPoints, setAdjustPoints] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+  const [adjustSaving, setAdjustSaving] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
+
   const loadTenants = async () => {
     try {
       const res = await api.adminListTenants({ status: "active" });
@@ -101,6 +110,20 @@ export default function UserDetail() {
     } catch (err) {
       console.error("加载角色失败:", err);
       setRoles([]);
+    }
+  };
+
+  const loadUserPoints = async () => {
+    if (!Number.isFinite(userId) || userId <= 0) return;
+    setPointsLoading(true);
+    try {
+      const data = await api.adminGetUserPoints(userId);
+      setPoints(data.points);
+      setPointLogs(data.logs || []);
+    } catch (err) {
+      console.error("加载用户积分失败:", err);
+    } finally {
+      setPointsLoading(false);
     }
   };
 
@@ -128,6 +151,8 @@ export default function UserDetail() {
       
       // 加载学校和角色数据
       await Promise.all([loadTenants(), loadRoles()]);
+      // 加载用户积分数据
+      await loadUserPoints();
     } catch (e) {
       console.error(e);
       setError(e instanceof Error ? e.message : "加载失败");
@@ -388,8 +413,19 @@ export default function UserDetail() {
                     <div className="text-xs text-muted-foreground truncate max-w-[20rem]">
                       ID: {detail.user.id}
                     </div>
-                    <Badge variant={detail.user.role === "admin" ? "default" : "secondary"}>
-                      {detail.user.role === "admin" ? "管理员" : "用户"}
+                    <Badge variant={
+                      detail.user.role === "admin" 
+                        ? "default" 
+                        : detail.user.role === "verified_user" 
+                          ? "default" 
+                          : "secondary"
+                    }>
+                      {detail.user.role === "admin" 
+                        ? "管理员" 
+                        : detail.user.role === "verified_user" 
+                          ? "已认证用户" 
+                          : "用户"
+                      }
                     </Badge>
                     <Badge variant={detail.user.status === "active" ? "outline" : "destructive"}>
                       {detail.user.status === "active" ? "正常" : "已封禁"}
@@ -402,7 +438,7 @@ export default function UserDetail() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
                 <div className="rounded-md border border-border px-3 py-2">
                   <div className="text-muted-foreground text-xs">手机号</div>
                   <div className="mt-0.5 font-medium break-all">{detail.user.phone || "-"}</div>
@@ -412,6 +448,20 @@ export default function UserDetail() {
                   <div className="mt-0.5 font-medium">{detail.user.gender || "-"}</div>
                 </div>
                 <div className="rounded-md border border-border px-3 py-2">
+                  <div className="text-muted-foreground text-xs">学号</div>
+                  <div className="mt-0.5 font-medium">{detail.user.studentId || "-"}</div>
+                </div>
+                <div className="rounded-md border border-border px-3 py-2">
+                  <div className="text-muted-foreground text-xs">认证状态</div>
+                  <div className="mt-0.5 font-medium">
+                    {detail.user.isVerified ? (
+                      <Badge variant="default">已认证</Badge>
+                    ) : (
+                      <Badge variant="outline">未认证</Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="rounded-md border border-border px-3 py-2 md:col-span-4">
                   <div className="text-muted-foreground text-xs">注册时间</div>
                   <div className="mt-0.5 font-medium">
                     {formatDateTime(detail.user.created_at)}
@@ -437,6 +487,10 @@ export default function UserDetail() {
                     <TabsTrigger value="complaints">投诉（{complaints.length}）</TabsTrigger>
                     <TabsTrigger value="evaluations">评价（{evaluations.length}）</TabsTrigger>
                     <TabsTrigger value="chats">聊天（{chats.length}）</TabsTrigger>
+                    <TabsTrigger value="points">
+                      <Coins className="h-4 w-4 mr-1" />
+                      积分中心
+                    </TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -675,6 +729,84 @@ export default function UserDetail() {
                         </TableBody>
                       </Table>
                     </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="points" className="m-0">
+                  <div className="px-6 py-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-medium text-foreground">积分中心</div>
+                      <Button size="sm" variant="outline" onClick={() => setAdjustOpen(true)}>
+                        调整积分
+                      </Button>
+                    </div>
+                    {pointsLoading ? (
+                      <div className="py-10 text-center text-muted-foreground">加载中...</div>
+                    ) : points ? (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                          <div className="rounded-lg border border-border p-4">
+                            <div className="text-muted-foreground text-xs mb-1">当前积分</div>
+                            <div className="text-2xl font-bold text-primary">{points.points ?? 0}</div>
+                          </div>
+                          <div className="rounded-lg border border-border p-4">
+                            <div className="text-muted-foreground text-xs mb-1">历史累计积分</div>
+                            <div className="text-2xl font-bold">{points.total_points ?? 0}</div>
+                          </div>
+                          <div className="rounded-lg border border-border p-4">
+                            <div className="text-muted-foreground text-xs mb-1">积分记录</div>
+                            <div className="text-2xl font-bold">{pointLogs.length}</div>
+                          </div>
+                        </div>
+                        <div className="text-sm font-medium text-foreground mb-3">积分记录</div>
+                        <div className="rounded-lg border border-border overflow-hidden">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>时间</TableHead>
+                                <TableHead>类型</TableHead>
+                                <TableHead>积分变动</TableHead>
+                                <TableHead>余额</TableHead>
+                                <TableHead>来源/原因</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {pointLogs.map((log: any) => (
+                                <TableRow key={log.id}>
+                                  <TableCell className="text-muted-foreground">
+                                    {formatDateTime(log.created_at)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={
+                                      log.type === "earn" ? "default" :
+                                      log.type === "deduct" ? "secondary" : "outline"
+                                    }>
+                                      {log.type === "earn" ? "获得" : log.type === "deduct" ? "消费" : "调整"}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className={`font-medium ${log.points > 0 ? "text-green-600" : log.points < 0 ? "text-red-600" : ""}`}>
+                                    {log.points > 0 ? "+" : ""}{log.points}
+                                  </TableCell>
+                                  <TableCell className="text-muted-foreground">{log.balance}</TableCell>
+                                  <TableCell className="text-muted-foreground">
+                                    {log.rule_name || log.description || "-"}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                              {pointLogs.length === 0 && (
+                                <TableRow>
+                                  <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                                    暂无积分记录
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="py-10 text-center text-muted-foreground">暂无数据</div>
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>
@@ -932,6 +1064,85 @@ export default function UserDetail() {
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={adjustOpen} onOpenChange={(v) => {
+        setAdjustOpen(v);
+        if (!v) {
+          setAdjustPoints("");
+          setAdjustReason("");
+          setAdjustError("");
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>调整用户积分</DialogTitle>
+            <DialogDescription>为 {detail?.user.nickname} 手动调整积分（可正可负）。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {adjustError && (
+              <div className="p-3 rounded-md bg-red-50 text-red-800 border border-red-200 text-sm">
+                {adjustError}
+              </div>
+            )}
+            <div>
+              <Label className="text-sm font-medium mb-2 block">积分变动</Label>
+              <Input
+                value={adjustPoints}
+                onChange={(e) => setAdjustPoints(e.target.value)}
+                placeholder="例如：100 或 -50"
+                type="number"
+              />
+              <p className="text-xs text-muted-foreground mt-1">正数增加积分，负数扣减积分</p>
+            </div>
+            <div>
+              <Label className="text-sm font-medium mb-2 block">调整原因</Label>
+              <Input
+                value={adjustReason}
+                onChange={(e) => setAdjustReason(e.target.value)}
+                placeholder="请输入调整原因"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdjustOpen(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!detail) return;
+                const pointsNum = Number(adjustPoints);
+                if (!Number.isFinite(pointsNum) || pointsNum === 0) {
+                  setAdjustError("请输入有效的积分数值（非0）");
+                  return;
+                }
+                if (!adjustReason.trim()) {
+                  setAdjustError("请输入调整原因");
+                  return;
+                }
+                setAdjustSaving(true);
+                setAdjustError("");
+                try {
+                  await api.adminAdjustUserPoints(detail.user.id, {
+                    points: pointsNum,
+                    reason: adjustReason.trim(),
+                  });
+                  setAdjustOpen(false);
+                  await loadUserPoints();
+                  toast.success("积分调整成功");
+                } catch (err) {
+                  console.error("调整积分失败:", err);
+                  setAdjustError(err instanceof Error ? err.message : "调整失败");
+                } finally {
+                  setAdjustSaving(false);
+                }
+              }}
+              disabled={adjustSaving}
+            >
+              {adjustSaving ? "调整中..." : "确认调整"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

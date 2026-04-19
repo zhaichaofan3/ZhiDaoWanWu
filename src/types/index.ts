@@ -49,6 +49,7 @@ export interface Order {
   createdAt: string;
   deliveryAddress?: string;
   deliveryTime?: string;
+  deliveryMethod?: string;
   timeline: { content: string; time: string }[];
 }
 

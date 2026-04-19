@@ -17,6 +17,8 @@ import { applyAdminUserRoutes } from "./admin/users.js";
 import { applyTenantAdminRoutes } from "./admin/tenant-admin.js";
 import { applyAdminRoleRoutes } from "./admin/roles.js";
 import { applyAdminPermissionRoutes } from "./admin/permissions.js";
+import { applyPointRoutes } from "./admin/points.js";
+import { applyUserPointRoutes } from "./admin/user-points.js";
 
 export function createAdminRouter(deps) {
   const router = express.Router();
@@ -39,6 +41,8 @@ export function createAdminRouter(deps) {
   applyAdminLogRoutes(router, deps);
   applyAdminEvaluationRoutes(router, deps);
   applyAdminFavoriteRoutes(router, deps);
+  applyPointRoutes(router, deps);
+  applyUserPointRoutes(router, deps);
 
   return router;
 }

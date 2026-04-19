@@ -18,7 +18,7 @@ export function buildAuthMiddleware({ db, verifyToken, permissionService }) {
           uid: user.id,
           role: user.role,
           tenantId: user.tenant_id,
-          emailVerified: user.email_verified === 1,
+          hasStudentId: !!(user.student_id && user.student_id.trim().length > 0),
           user,
         };
         next();
@@ -106,12 +106,12 @@ export function buildAuthMiddleware({ db, verifyToken, permissionService }) {
     };
   }
 
-  function requireEmailVerified(req, res, next) {
+  function requireStudentId(req, res, next) {
     authRequired(req, res, () => {
-      if (!req.auth.emailVerified) {
+      if (!req.auth.hasStudentId) {
         return res.status(403).json({
-          message: "需要完成学校邮箱认证",
-          code: "EMAIL_NOT_VERIFIED",
+          message: "需要先登记学号",
+          code: "STUDENT_ID_REQUIRED",
         });
       }
       next();
@@ -136,7 +136,7 @@ export function buildAuthMiddleware({ db, verifyToken, permissionService }) {
     superAdminRequired,
     tenantAdminRequired,
     requirePermission,
-    requireEmailVerified,
+    requireStudentId,
     requireTenant,
   };
 }

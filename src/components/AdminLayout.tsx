@@ -20,6 +20,7 @@ import {
   BrainCircuit,
   Building2,
   School,
+  Coins,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -45,6 +46,7 @@ const secondLevelMenuItems = [
   { path: "/admin/complaints", label: "投诉处理", icon: AlertTriangle },
   { path: "/admin/evaluations", label: "评价管理", icon: Star },
   { path: "/admin/favorites", label: "收藏管理", icon: Heart },
+  { path: "/admin/points", label: "积分管理", icon: Coins },
   { path: "/admin/categories", label: "分类管理", icon: ListTree },
   { path: "/admin/dicts", label: "字典管理", icon: BookOpenCheck },
   { path: "/admin/announcements", label: "公告管理", icon: Megaphone },

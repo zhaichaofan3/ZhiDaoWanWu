@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Trash2, Edit, Plus, Search, RefreshCw, X, Mail } from "lucide-react";
+import { Trash2, Edit, Plus, Search, RefreshCw, X } from "lucide-react";
 
 const TenantManagementPage = () => {
   const [tenants, setTenants] = useState<any[]>([]);
@@ -31,15 +31,6 @@ const TenantManagementPage = () => {
     logo: "",
     logo_dark: ""
   });
-  
-  // 邮箱域名管理
-  const [domains, setDomains] = useState<any[]>([]);
-  const [domainForm, setDomainForm] = useState({
-    domain: "",
-    description: ""
-  });
-  const [currentDomain, setCurrentDomain] = useState<any>(null);
-  const [domainEditMode, setDomainEditMode] = useState<"create" | "edit">('create');
 
   const fetchTenants = async () => {
     setLoading(true);
@@ -58,81 +49,6 @@ const TenantManagementPage = () => {
     } finally {
       setLoading(false);
     }
-  };
-  
-  // 获取邮箱域名列表
-  const fetchDomains = async (tenantId: number) => {
-    try {
-      // 注意：这里需要根据后端API实现调整
-      // 目前后端没有直接的获取租户域名列表的API，我们需要从租户详情中获取
-      const tenant = await api.adminGetTenant(tenantId);
-      setDomains(tenant.domains || []);
-    } catch (error) {
-      console.error("获取邮箱域名列表失败:", error);
-      toast.error("获取邮箱域名列表失败");
-    }
-  };
-  
-  // 添加邮箱域名
-  const handleAddDomain = async () => {
-    if (!currentTenant) return;
-    
-    try {
-      await api.adminAddTenantDomain(currentTenant.id, domainForm);
-      toast.success("邮箱域名添加成功");
-      setDomainForm({ domain: "", description: "" });
-      setDomainEditMode('create');
-      fetchDomains(currentTenant.id);
-    } catch (error) {
-      console.error("添加邮箱域名失败:", error);
-      toast.error("添加邮箱域名失败");
-    }
-  };
-  
-  // 更新邮箱域名
-  const handleUpdateDomain = async () => {
-    if (!currentTenant || !currentDomain) return;
-    
-    try {
-      await api.adminUpdateTenantDomain(currentTenant.id, currentDomain.id, domainForm);
-      toast.success("邮箱域名更新成功");
-      setCurrentDomain(null);
-      setDomainEditMode('create');
-      fetchDomains(currentTenant.id);
-    } catch (error) {
-      console.error("更新邮箱域名失败:", error);
-      toast.error("更新邮箱域名失败");
-    }
-  };
-  
-  // 删除邮箱域名
-  const handleDeleteDomain = async (domainId: number) => {
-    if (!currentTenant) return;
-    
-    if (window.confirm("确定要删除这个邮箱域名吗？") === true) {
-      try {
-        await api.adminDeleteTenantDomain(currentTenant.id, domainId);
-        toast.success("邮箱域名删除成功");
-        fetchDomains(currentTenant.id);
-      } catch (error) {
-        console.error("删除邮箱域名失败:", error);
-        toast.error("删除邮箱域名失败");
-      }
-    }
-  };
-  
-  // 编辑邮箱域名
-  const handleEditDomain = (domain: any) => {
-    setCurrentDomain(domain);
-    setDomainForm({ domain: domain.domain, description: domain.description || "" });
-    setDomainEditMode('edit');
-  };
-  
-  // 取消编辑域名
-  const cancelEditDomain = () => {
-    setCurrentDomain(null);
-    setDomainForm({ domain: "", description: "" });
-    setDomainEditMode('create');
   };
 
   useEffect(() => {
@@ -214,8 +130,6 @@ const TenantManagementPage = () => {
     });
     setDrawerMode("edit");
     setDrawerOpen(true);
-    // 获取租户的邮箱域名列表
-    fetchDomains(tenant.id);
   };
 
   return (
@@ -533,81 +447,6 @@ const TenantManagementPage = () => {
                         <SelectItem value="suspended">暂停</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                )}
-
-                {/* 邮箱域名管理 */}
-                {drawerMode === "edit" && (
-                  <div className="border-t border-border pt-4 mt-4">
-                    <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      邮箱域名管理
-                    </h3>
-                    
-                    {/* 域名列表 */}
-                    <div className="space-y-2 mb-4">
-                      {domains.length > 0 ? (
-                        domains.map((domain) => (
-                          <div key={domain.id} className="flex items-center justify-between p-2 border rounded-lg">
-                            <div>
-                              <div className="font-medium">{domain.domain}</div>
-                              {domain.description && (
-                                <div className="text-xs text-muted-foreground">{domain.description}</div>
-                              )}
-                            </div>
-                            <div className="flex space-x-1">
-                              <Button variant="ghost" size="sm" onClick={() => handleEditDomain(domain)}>
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDeleteDomain(domain.id)}>
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="text-sm text-muted-foreground py-2">
-                          暂无邮箱域名，点击下方添加
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* 域名编辑表单 */}
-                    <div className="border rounded-lg p-4">
-                      <h4 className="text-sm font-medium mb-3">
-                        {domainEditMode === "create" ? "添加邮箱域名" : "编辑邮箱域名"}
-                      </h4>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-1 block">邮箱域名</label>
-                          <Input
-                            id="domain"
-                            value={domainForm.domain}
-                            onChange={(e) => setDomainForm({ ...domainForm, domain: e.target.value })}
-                            placeholder="例如：example.com"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-medium text-foreground mb-1 block">描述</label>
-                          <Input
-                            id="description"
-                            value={domainForm.description}
-                            onChange={(e) => setDomainForm({ ...domainForm, description: e.target.value })}
-                            placeholder="域名描述"
-                          />
-                        </div>
-                        <div className="flex items-center justify-end gap-2">
-                          {domainEditMode === "edit" && (
-                            <Button variant="outline" size="sm" onClick={cancelEditDomain}>
-                              取消
-                            </Button>
-                          )}
-                          <Button size="sm" onClick={domainEditMode === "create" ? handleAddDomain : handleUpdateDomain}>
-                            {domainEditMode === "create" ? "添加" : "保存"}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 )}
 

@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Heart, MessageCircle, User, Menu, X, Plus, Sun, Moon, Package, ShoppingCart } from "lucide-react";
+import { Search, Heart, MessageCircle, User, Menu, X, Plus, Sun, Moon, Package, ShoppingCart, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo } from "react";
@@ -192,10 +192,13 @@ const Header = () => {
             <div className="relative ml-1 group">
               <button
                 type="button"
-                className="h-9 px-2 rounded-md text-sm text-muted-foreground hover:text-foreground max-w-24 truncate"
+                className="h-9 px-2 rounded-md text-sm text-muted-foreground hover:text-foreground max-w-24 truncate flex items-center gap-1.5"
                 title={user.nickname}
               >
                 {user.nickname}
+                {user.hasStudentId && (
+                  <CheckCircle className="h-3.5 w-3.5 text-green-500" title="已认证" />
+                )}
               </button>
               <div className="absolute right-0 top-full pt-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity">
                 <div className="min-w-28 rounded-md border border-border bg-popover shadow-md p-1">
@@ -251,8 +254,11 @@ const Header = () => {
                   <User className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">
+                  <div className="text-sm font-medium truncate flex items-center gap-1.5">
                     {isLoggedIn ? user?.nickname : "未登录"}
+                    {isLoggedIn && user?.hasStudentId && (
+                      <CheckCircle className="h-3.5 w-3.5 text-green-500" title="已认证" />
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
                     {isLoggedIn ? "欢迎回来" : "登录后可查看消息、收藏等"}

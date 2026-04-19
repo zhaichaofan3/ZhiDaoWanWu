@@ -12,6 +12,7 @@ import {
   FavoriteManagementPage,
   LogManagementPage,
   OrderManagementPage,
+  PointManagementPage,
   ProductManagementPage,
   RequireAdmin,
   TenantManagementPage,
@@ -39,6 +40,7 @@ export const adminRoutes = (
     <Route path="complaints" element={<ComplaintManagementPage />} />
     <Route path="evaluations" element={<EvaluationManagementPage />} />
     <Route path="favorites" element={<FavoriteManagementPage />} />
+    <Route path="points" element={<PointManagementPage />} />
     <Route path="logs" element={<LogManagementPage />} />
     <Route path="categories" element={<CategoryManagementPage />} />
     <Route path="dicts" element={<DictManagementPage />} />

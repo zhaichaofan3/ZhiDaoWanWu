@@ -27,6 +27,15 @@ export function createUserRouter(deps) {
   router.post("/users/me/phone/send-code", deps.authRequired, controller.sendChangePhoneCode);
   router.post("/users/me/phone/confirm", deps.authRequired, controller.confirmChangePhone);
 
+  // 学号登记
+  router.post("/users/me/student-id", deps.authRequired, controller.setStudentId);
+
+  // 设置学校
+  router.post("/users/me/tenant", deps.authRequired, controller.setTenant);
+
+  // 用户积分
+  router.get("/users/me/points", deps.authRequired, controller.getMyPoints);
+
   return router;
 }
 

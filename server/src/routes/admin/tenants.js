@@ -65,43 +65,6 @@ export function applyAdminTenantRoutes(router, { db, superAdminRequired }) {
     }
   });
 
-  router.post("/admin/tenants/:id/domains", superAdminRequired, async (req, res) => {
-    try {
-      const result = await tenantService.addEmailDomain(Number(req.params.id), req.body);
-      return res.status(result.status).json(result.body);
-    } catch (error) {
-      console.error("添加邮箱域名失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
-  router.patch("/admin/tenants/:tenantId/domains/:domainId", superAdminRequired, async (req, res) => {
-    try {
-      const result = await tenantService.updateEmailDomain(
-        Number(req.params.tenantId),
-        Number(req.params.domainId),
-        req.body
-      );
-      return res.status(result.status).json(result.body);
-    } catch (error) {
-      console.error("更新邮箱域名失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
-  router.delete("/admin/tenants/:tenantId/domains/:domainId", superAdminRequired, async (req, res) => {
-    try {
-      const result = await tenantService.removeEmailDomain(
-        Number(req.params.tenantId),
-        Number(req.params.domainId)
-      );
-      return res.status(result.status).json(result.body);
-    } catch (error) {
-      console.error("删除邮箱域名失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
   router.get("/admin/roles", superAdminRequired, async (req, res) => {
     try {
       const result = await permissionService.getRoles(req.query);

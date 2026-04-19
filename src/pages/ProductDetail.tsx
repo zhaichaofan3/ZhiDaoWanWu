@@ -31,7 +31,6 @@ const ProductDetail = () => {
     api
       .getProduct(Number(id))
       .then((data) => {
-        // 转换API返回的数据格式以匹配前端类型
         const formattedProduct: Product = {
           id: data.id.toString(),
           title: data.title,
@@ -84,7 +83,7 @@ const ProductDetail = () => {
       toast.info("请先登录");
       return;
     }
-    
+
     try {
       if (isFav) {
         await api.removeFavorite(user.id, Number(product.id));
@@ -139,6 +138,7 @@ const ProductDetail = () => {
           product_id: Number(product.id),
           deliveryAddress,
           deliveryTime,
+          deliveryMethod: "buyer_pickup",
         });
 
         const orderId = (order as any)?.id;
@@ -158,7 +158,6 @@ const ProductDetail = () => {
       <Header />
       <main className="flex-1">
         <div className="container py-4 md:py-6">
-          {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
             <Link to="/products" className="flex items-center gap-1 hover:text-foreground">
               <ChevronLeft className="h-4 w-4" /> 商品广场
@@ -168,7 +167,6 @@ const ProductDetail = () => {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Images */}
             <div className="space-y-3">
               <div
                 className="aspect-square rounded-xl overflow-hidden bg-muted cursor-zoom-in"
@@ -196,10 +194,9 @@ const ProductDetail = () => {
               )}
             </div>
 
-            {/* Details */}
             <div className="space-y-4">
               <h1 className="text-xl md:text-2xl font-bold text-foreground">{product.title}</h1>
-              
+
               <div className="flex items-baseline gap-3">
                 <span className="text-3xl font-bold text-destructive">¥{product.price}</span>
                 {product.originalPrice && (
@@ -225,7 +222,6 @@ const ProductDetail = () => {
                 <p className="text-sm text-muted-foreground leading-relaxed">{product.description}</p>
               </div>
 
-              {/* Seller Info */}
               <div className="border-t border-border pt-4">
                 <h3 className="font-medium text-foreground mb-2">卖家信息</h3>
                 <div className="flex items-center gap-3">
@@ -237,7 +233,6 @@ const ProductDetail = () => {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3 pt-4">
                 <Button
                   variant="outline"

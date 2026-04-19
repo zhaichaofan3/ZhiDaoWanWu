@@ -53,6 +53,14 @@ export function buildTradeController(deps) {
         return res.status(500).json({ message: "服务器内部错误" });
       }
     },
+    async updateDeliveryMethod(req, res) {
+      try {
+        return send(res, await service.updateOrderDeliveryMethod(Number(req.params.id), req.auth.uid, req.body?.deliveryMethod));
+      } catch (error) {
+        console.error("更新配送方式失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
     async createEvaluation(req, res) {
       try {
         return send(res, await service.createEvaluation(Number(req.params.id), req.auth.uid, req.body ?? {}));

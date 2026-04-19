@@ -1,19 +1,20 @@
 export function buildTradeService({ db }) {
   return {
     async createOrder(buyerId, body) {
-      const buyerRows = await db.query("SELECT tenant_id, email_verified FROM users WHERE id = ?", [buyerId]);
+      const buyerRows = await db.query("SELECT tenant_id, student_id FROM users WHERE id = ?", [buyerId]);
       const buyer = buyerRows[0];
       if (!buyer) {
         return { status: 404, body: { message: "用户不存在" } };
       }
-      if (!buyer.tenant_id || buyer.email_verified !== 1) {
-        return { status: 403, body: { message: "需要先选择学校并完成邮箱认证才能下单", code: "TENANT_NOT_VERIFIED" } };
+      if (!buyer.student_id || buyer.student_id.trim().length === 0) {
+        return { status: 403, body: { message: "需要先登记学号才能下单", code: "STUDENT_ID_REQUIRED" } };
       }
 
-      const { product_id, deliveryAddress, deliveryTime } = body ?? {};
-      if (!product_id || !deliveryAddress || !deliveryTime) {
-        return { status: 400, body: { message: "product_id, deliveryAddress, deliveryTime 为必填" } };
+      const { product_id, deliveryAddress, deliveryTime, deliveryMethod } = body ?? {};
+      if (!product_id || !deliveryAddress || !deliveryTime || !deliveryMethod) {
+        return { status: 400, body: { message: "product_id, deliveryAddress, deliveryTime, deliveryMethod 为必填" } };
       }
+
 
       const product = await db.getById("products", product_id);
       if (!product) return { status: 404, body: { message: "商品不存在" } };
@@ -34,6 +35,7 @@ export function buildTradeService({ db }) {
         amount: product.price,
         deliveryAddress,
         deliveryTime,
+        deliveryMethod,
         timeline: JSON.stringify([{ content: "订单创建成功", time: new Date().toISOString() }]),
         created_at: new Date().toISOString(),
       };
@@ -194,6 +196,23 @@ export function buildTradeService({ db }) {
         }),
       ]);
       return { status: 200, body: { message: "ok" } };
+    },
+
+    async updateOrderDeliveryMethod(id, userId, deliveryMethod) {
+      const order = await db.getById("orders", id);
+      if (!order) return { status: 404, body: { message: "订单不存在" } };
+      if (order.buyer_id !== userId) {
+        return { status: 403, body: { message: "只有买家可以修改配送方式" } };
+      }
+      if (order.status !== "pending") {
+        return { status: 400, body: { message: "只能修改待确认订单的配送方式" } };
+      }
+      if (!["buyer_pickup", "seller_delivery", "campus_runner"].includes(deliveryMethod)) {
+        return { status: 400, body: { message: "配送方式不合法" } };
+      }
+
+      await db.update("orders", id, { deliveryMethod, updated_at: new Date().toISOString() });
+      return { status: 200, body: { message: "配送方式更新成功" } };
     },
 
     async createEvaluation(id, userId, body) {

@@ -170,6 +170,35 @@ export function buildUserController(deps) {
         return res.status(500).json({ message: "服务器内部错误" });
       }
     },
+
+    async setStudentId(req, res) {
+      try {
+        const { studentId } = req.body ?? {};
+        return send(res, await service.setStudentId(req.auth.uid, studentId));
+      } catch (error) {
+        console.error("登记学号失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async setTenant(req, res) {
+      try {
+        const { tenantId } = req.body ?? {};
+        return send(res, await service.setTenant(req.auth.uid, tenantId));
+      } catch (error) {
+        console.error("设置学校失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
+
+    async getMyPoints(req, res) {
+      try {
+        return res.json(await service.getMyPoints(req.auth.uid));
+      } catch (error) {
+        console.error("获取积分失败:", error);
+        return res.status(500).json({ message: "服务器内部错误" });
+      }
+    },
   };
 }
 

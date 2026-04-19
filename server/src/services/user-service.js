@@ -434,6 +434,66 @@ export function buildUserService({ db, hashPassword, verifyPassword, smsService 
       await db.update("users", meId, { phone: p });
       return { status: 200, body: { message: "手机号已更新" } };
     },
+
+    async setStudentId(meId, studentId) {
+      const sid = studentId ? String(studentId).trim() : "";
+      if (!sid) return { status: 400, body: { message: "学号不能为空" } };
+      if (sid.length < 4 || sid.length > 20) return { status: 400, body: { message: "学号长度应为4-20位" } };
+      if (!/^[a-zA-Z0-9]+$/.test(sid)) return { status: 400, body: { message: "学号只能包含字母和数字" } };
+
+      const user = await db.getById("users", meId);
+      if (!user) return { status: 404, body: { message: "用户不存在" } };
+
+      const exists = await db.query("SELECT id FROM users WHERE student_id = ? AND id != ?", [sid, meId]);
+      if (exists.length > 0) return { status: 409, body: { message: "该学号已被其他用户使用" } };
+
+      // 学号登记成功后，将用户角色改为已认证用户
+      await db.update("users", meId, { student_id: sid, role: "verified_user" });
+      return { status: 200, body: { message: "学号登记成功" } };
+    },
+
+    async setTenant(meId, tenantId) {
+      const tid = Number(tenantId);
+      if (!Number.isFinite(tid) || tid <= 0) return { status: 400, body: { message: "无效的学校ID" } };
+
+      const user = await db.getById("users", meId);
+      if (!user) return { status: 404, body: { message: "用户不存在" } };
+
+      const tenant = await db.getById("tenants", tid);
+      if (!tenant) return { status: 404, body: { message: "学校不存在" } };
+
+      await db.update("users", meId, { tenant_id: tid });
+      return { status: 200, body: { message: "学校设置成功" } };
+    },
+
+    async getMyPoints(userId) {
+      let userPoints = await db.query(
+        "SELECT * FROM user_points WHERE user_id = ? LIMIT 1",
+        [userId]
+      );
+
+      if (!userPoints || userPoints.length === 0) {
+        const insertId = await db.insert("user_points", {
+          user_id: userId,
+          points: 0,
+          total_points: 0,
+        });
+        userPoints = await db.query(
+          "SELECT * FROM user_points WHERE id = ? LIMIT 1",
+          [insertId]
+        );
+      }
+
+      const logs = await db.query(
+        "SELECT pl.*, pr.name as rule_name FROM point_logs pl LEFT JOIN point_rules pr ON pl.rule_id = pr.id WHERE pl.user_id = ? ORDER BY pl.created_at DESC LIMIT 50",
+        [userId]
+      );
+
+      return {
+        points: userPoints[0] || { user_id: userId, points: 0, total_points: 0 },
+        logs: logs || []
+      };
+    },
   };
 }
 

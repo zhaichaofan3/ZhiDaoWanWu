@@ -93,6 +93,10 @@ export default function OrderDetailDialog({ orderId, open, onOpenChange }: Order
                 <div className="text-muted-foreground text-xs">交付地址</div>
                 <div className="mt-1 break-all">{detail.deliveryAddress || "-"}</div>
               </div>
+              <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
+                <div className="text-muted-foreground text-xs">配送方式</div>
+                <div className="mt-1">{detail.deliveryMethod === 'buyer_pickup' ? '买家自提' : detail.deliveryMethod === 'seller_delivery' ? '卖家配送' : detail.deliveryMethod === 'campus_runner' ? '校园跑腿员' : '-'}</div>
+              </div>
             </div>
 
             <div className="rounded-lg border border-border p-4">

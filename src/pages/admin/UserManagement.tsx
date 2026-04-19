@@ -24,10 +24,12 @@ interface AdminUser {
   nickname: string;
   avatar?: string | null;
   phone: string;
-  role: "user" | "admin";
+  role: "user" | "admin" | "verified_user";
   status: "active" | "banned";
   tenantId?: number | null;
   tenantName?: string | null;
+  studentId?: string | null;
+  isVerified?: boolean;
   createdAt: string;
   products: number;
   orders: number;
@@ -264,6 +266,8 @@ const UserManagement = () => {
               <TableRow>
                 <TableHead>用户</TableHead>
                 <TableHead>手机号</TableHead>
+                <TableHead>学号</TableHead>
+                <TableHead>认证状态</TableHead>
                 <TableHead>学校</TableHead>
                 <TableHead>角色</TableHead>
                 <TableHead>状态</TableHead>
@@ -295,6 +299,12 @@ const UserManagement = () => {
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{user.phone}</TableCell>
+                    <TableCell className="text-sm">{user.studentId || '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={user.isVerified ? "default" : "outline"} className="px-2 py-1">
+                        {user.isVerified ? "已认证" : "未认证"}
+                      </Badge>
+                    </TableCell>
                     <TableCell>
                       {user.tenantName ? (
                         <Badge variant="outline" className="px-2 py-1">
@@ -305,8 +315,8 @@ const UserManagement = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={user.role === "admin" ? "default" : "secondary"} className="px-2 py-1">
-                        {user.role === "admin" ? "管理员" : "用户"}
+                      <Badge variant={user.role === "admin" ? "default" : user.role === "verified_user" ? "secondary" : "outline"} className="px-2 py-1">
+                        {user.role === "admin" ? "管理员" : user.role === "verified_user" ? "已认证用户" : "用户"}
                       </Badge>
                     </TableCell>
                     <TableCell>

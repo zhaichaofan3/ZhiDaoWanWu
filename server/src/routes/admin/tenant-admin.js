@@ -35,68 +35,6 @@ export function applyTenantAdminRoutes(router, { db, tenantAdminRequired }) {
     }
   });
 
-  router.get("/tenant/domains", tenantAdminRequired, async (req, res) => {
-    try {
-      const tenantId = req.auth.tenantId;
-      if (!tenantId) {
-        return res.status(400).json({ message: "当前用户未绑定学校" });
-      }
-
-      const domains = await db.query(
-        "SELECT * FROM tenant_email_domains WHERE tenant_id = ? ORDER BY created_at",
-        [tenantId]
-      );
-      return res.status(200).json({ list: domains });
-    } catch (error) {
-      console.error("获取邮箱域名列表失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
-  router.post("/tenant/domains", tenantAdminRequired, async (req, res) => {
-    try {
-      const tenantId = req.auth.tenantId;
-      if (!tenantId) {
-        return res.status(400).json({ message: "当前用户未绑定学校" });
-      }
-
-      const result = await tenantService.addEmailDomain(tenantId, req.body);
-      return res.status(result.status).json(result.body);
-    } catch (error) {
-      console.error("添加邮箱域名失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
-  router.patch("/tenant/domains/:domainId", tenantAdminRequired, async (req, res) => {
-    try {
-      const tenantId = req.auth.tenantId;
-      const result = await tenantService.updateEmailDomain(
-        tenantId,
-        Number(req.params.domainId),
-        req.body
-      );
-      return res.status(result.status).json(result.body);
-    } catch (error) {
-      console.error("更新邮箱域名失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
-  router.delete("/tenant/domains/:domainId", tenantAdminRequired, async (req, res) => {
-    try {
-      const tenantId = req.auth.tenantId;
-      const result = await tenantService.removeEmailDomain(
-        tenantId,
-        Number(req.params.domainId)
-      );
-      return res.status(result.status).json(result.body);
-    } catch (error) {
-      console.error("删除邮箱域名失败:", error);
-      return res.status(500).json({ message: "服务器内部错误" });
-    }
-  });
-
   router.get("/tenant/users", tenantAdminRequired, async (req, res) => {
     try {
       const tenantId = req.auth.tenantId;
@@ -106,7 +44,7 @@ export function applyTenantAdminRoutes(router, { db, tenantAdminRequired }) {
 
       const { status, keyword, page = 1, limit = 20 } = req.query;
       let sql = `
-        SELECT u.id, u.nickname, u.avatar, u.phone, u.email, u.email_verified,
+        SELECT u.id, u.nickname, u.avatar, u.phone, u.student_id,
                u.status, u.created_at,
                (SELECT COUNT(*) FROM products WHERE owner_id = u.id) as products,
                (SELECT COUNT(*) FROM orders WHERE buyer_id = u.id OR seller_id = u.id) as orders
@@ -121,7 +59,7 @@ export function applyTenantAdminRoutes(router, { db, tenantAdminRequired }) {
       }
 
       if (keyword) {
-        sql += " AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.email LIKE ?)";
+        sql += " AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.student_id LIKE ?)";
         const kw = `%${keyword}%`;
         params.push(kw, kw, kw);
       }
@@ -136,7 +74,7 @@ export function applyTenantAdminRoutes(router, { db, tenantAdminRequired }) {
 
       const countSql = "SELECT COUNT(*) as total FROM users WHERE tenant_id = ?" +
         (status ? " AND status = ?" : "") +
-        (keyword ? " AND (nickname LIKE ? OR phone LIKE ? OR email LIKE ?)" : "");
+        (keyword ? " AND (nickname LIKE ? OR phone LIKE ? OR student_id LIKE ?)" : "");
       const countParams = [
         tenantId,
         ...(status ? [status] : []),
@@ -197,7 +135,7 @@ export function applyTenantAdminRoutes(router, { db, tenantAdminRequired }) {
 
       const [userRows, products, orders] = await Promise.all([
         db.query(
-          `SELECT u.id, u.nickname, u.avatar, u.phone, u.email, u.email_verified,
+          `SELECT u.id, u.nickname, u.avatar, u.phone, u.student_id,
                   u.status, u.created_at, u.bio,
                   (SELECT COUNT(*) FROM products WHERE owner_id = u.id) as products,
                   (SELECT COUNT(*) FROM orders WHERE buyer_id = u.id OR seller_id = u.id) as orders

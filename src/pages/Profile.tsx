@@ -1,3 +1,4 @@
+
 import Header from "@/features/public/components/Header";
 import Footer from "@/features/public/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,8 @@ import {
   Trash2,
   Eye,
   Plus,
+  CheckCircle,
+  Coins,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
@@ -26,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import PointsCenterContent from "@/components/PointsCenterContent";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -352,7 +356,7 @@ const Profile = () => {
   const defaultTab = useMemo(() => {
     const q = new URLSearchParams(location.search);
     const tab = q.get("tab");
-    const allowed = new Set(["info", "my-products", "favorites", "orders", "addresses"]);
+    const allowed = new Set(["info", "my-products", "favorites", "orders", "addresses", "points"]);
     if (tab && allowed.has(tab)) return tab;
     return "info";
   }, [location.search]);
@@ -398,6 +402,9 @@ const Profile = () => {
               <TabsTrigger value="addresses" className="gap-1.5" onClick={ensureAddressesLoaded}>
                 <MapPin className="h-4 w-4" /> 收货地址
               </TabsTrigger>
+              <TabsTrigger value="points" className="gap-1.5">
+                <Coins className="h-4 w-4" /> 积分中心
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="info">
@@ -412,7 +419,12 @@ const Profile = () => {
                       </Avatar>
                     </div>
                     <div>
-                      <h2 className="text-lg font-bold text-foreground">{user.nickname}</h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold text-foreground">{user.nickname}</h2>
+                        {me?.hasStudentId && (
+                          <CheckCircle className="h-4 w-4 text-green-500" title="已认证" />
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground mt-1">{user.bio}</p>
                     </div>
                     <div className="ml-auto flex items-center gap-2">
@@ -519,6 +531,8 @@ const Profile = () => {
                   保存修改
                 </Button>
               </div>
+
+
 
               <div className="rounded-xl border border-border bg-card p-6 mt-6 space-y-4">
                 <h3 className="font-semibold text-foreground">安全设置</h3>
@@ -1005,6 +1019,15 @@ const Profile = () => {
                     </div>
                   ))
                 )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="points">
+              <div className="space-y-6">
+                <div className="rounded-xl border border-border bg-card p-6">
+                  <h3 className="font-semibold text-foreground mb-4">积分中心</h3>
+                  <PointsCenterContent />
+                </div>
               </div>
             </TabsContent>
           </Tabs>

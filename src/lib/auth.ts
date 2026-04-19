@@ -13,9 +13,8 @@ export type Me = {
   role: AuthRole;
   tenantId?: number | null;
   tenantName?: string | null;
-  emailVerified: boolean;
-  email?: string;
-  emailVerifiedAt?: string;
+  studentId?: string;
+  hasStudentId: boolean;
   createdAt?: string;
 };
 
@@ -59,5 +58,13 @@ export function getMe(): Me | null {
     return JSON.parse(raw) as Me;
   } catch {
     return null;
+  }
+}
+
+export function updateMe(me: Me) {
+  try {
+    localStorage.setItem(ME_KEY, JSON.stringify(me));
+  } catch {
+    // ignore
   }
 }

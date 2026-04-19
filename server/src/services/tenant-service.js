@@ -114,17 +114,9 @@ export function buildTenantService({ db }) {
       return { status: 404, body: { message: "租户不存在" } };
     }
 
-    const domains = await db.query(
-      "SELECT * FROM tenant_email_domains WHERE tenant_id = ? ORDER BY created_at",
-      [id]
-    );
-
     return {
       status: 200,
-      body: {
-        ...tenant,
-        domains,
-      },
+      body: tenant,
     };
   }
 
@@ -136,87 +128,6 @@ export function buildTenantService({ db }) {
     return { status: 200, body: tenants[0] };
   }
 
-  async function addEmailDomain(tenantId, data) {
-    const { domain, description } = data;
-    if (!domain) {
-      return { status: 400, body: { message: "domain 为必填" } };
-    }
-
-    const tenant = await db.getById("tenants", tenantId);
-    if (!tenant) {
-      return { status: 404, body: { message: "租户不存在" } };
-    }
-
-    const existing = await db.query(
-      "SELECT id FROM tenant_email_domains WHERE tenant_id = ? AND domain = ?",
-      [tenantId, domain]
-    );
-    if (existing.length > 0) {
-      return { status: 409, body: { message: "该域名已存在" } };
-    }
-
-    const id = await db.insert("tenant_email_domains", {
-      tenant_id: tenantId,
-      domain,
-      description: description || "",
-      status: "active",
-      created_at: new Date().toISOString(),
-    });
-
-    return { status: 201, body: { id, message: "域名添加成功" } };
-  }
-
-  async function removeEmailDomain(tenantId, domainId) {
-    const domain = await db.getById("tenant_email_domains", domainId);
-    if (!domain) {
-      return { status: 404, body: { message: "域名不存在" } };
-    }
-
-    if (domain.tenant_id !== Number(tenantId)) {
-      return { status: 403, body: { message: "无权操作此域名" } };
-    }
-
-    await db.delete("tenant_email_domains", domainId);
-    return { status: 200, body: { message: "域名删除成功" } };
-  }
-
-  async function updateEmailDomain(tenantId, domainId, data) {
-    const { status, description } = data;
-    const domain = await db.getById("tenant_email_domains", domainId);
-    if (!domain) {
-      return { status: 404, body: { message: "域名不存在" } };
-    }
-
-    if (domain.tenant_id !== Number(tenantId)) {
-      return { status: 403, body: { message: "无权操作此域名" } };
-    }
-
-    const updateData = {};
-    if (status !== undefined) updateData.status = status;
-    if (description !== undefined) updateData.description = description;
-
-    await db.update("tenant_email_domains", domainId, updateData);
-    return { status: 200, body: { message: "域名更新成功" } };
-  }
-
-  async function getTenantByEmail(email) {
-    if (!email || !email.includes("@")) {
-      return null;
-    }
-
-    const domain = email.split("@")[1];
-    const domains = await db.query(
-      `SELECT ted.*, t.id as tenant_id, t.name as tenant_name, t.code as tenant_code
-       FROM tenant_email_domains ted
-       JOIN tenants t ON t.id = ted.tenant_id
-       WHERE ted.domain = ? AND ted.status = 'active' AND t.status = 'active'
-       LIMIT 1`,
-      [domain]
-    );
-
-    return domains[0] || null;
-  }
-
   return {
     createTenant,
     updateTenant,
@@ -224,9 +135,5 @@ export function buildTenantService({ db }) {
     getTenants,
     getTenantById,
     getTenantByCode,
-    addEmailDomain,
-    removeEmailDomain,
-    updateEmailDomain,
-    getTenantByEmail,
   };
 }
