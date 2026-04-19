@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from "react";
 import { api } from "@/lib/api";
 import { clearAuth, getMe, getToken, type Me } from "@/lib/auth";
 import { useTheme } from "@/hooks/useTheme";
+import { resolveAssetUrl } from "@/lib/assets";
 
 const Header = () => {
   const location = useLocation();
@@ -98,16 +99,13 @@ const Header = () => {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
           {tenant?.logo ? (
-            <>
-              {resolvedTheme !== "dark" && tenant.logo && (
-                <img src={tenant.logo} alt={tenant.name} className="h-6 w-auto" loading="eager" decoding="async" />
-              )}
-              {resolvedTheme === "dark" && tenant.logo_dark ? (
-                <img src={tenant.logo_dark} alt={tenant.name} className="h-6 w-auto" loading="eager" decoding="async" />
-              ) : tenant.logo && (
-                <img src={tenant.logo} alt={tenant.name} className="h-6 w-auto" loading="eager" decoding="async" />
-              )}
-            </>
+            <img
+              src={resolveAssetUrl(resolvedTheme === "dark" && tenant.logo_dark ? tenant.logo_dark : tenant.logo)}
+              alt={tenant.name}
+              className="h-6 w-auto"
+              loading="eager"
+              decoding="async"
+            />
           ) : (
             <>
               <img src="/logos/logo_black.svg" alt="校园二手" className="h-6 w-auto dark:hidden" loading="eager" decoding="async" />

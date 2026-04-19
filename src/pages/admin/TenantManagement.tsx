@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { resolveAssetUrl } from "@/lib/assets";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -278,7 +279,7 @@ const TenantManagementPage = () => {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {tenant.logo ? (
-                          <img src={tenant.logo} alt="Logo" className="h-8 w-8 rounded object-cover" />
+                          <img src={resolveAssetUrl(tenant.logo)} alt="Logo" className="h-8 w-8 rounded object-cover" />
                         ) : (
                           <div className="h-8 w-8 rounded bg-muted flex items-center justify-center text-xs text-muted-foreground">
                             {tenant.name?.charAt(0) || "?"}
@@ -355,7 +356,7 @@ const TenantManagementPage = () => {
             <div className="space-y-5">
               {formData.logo && (
                 <div className="flex items-center space-x-4 p-4 border rounded-lg">
-                  <img src={formData.logo} alt="Logo" className="w-16 h-16 object-cover rounded" />
+                  <img src={resolveAssetUrl(formData.logo)} alt="Logo" className="w-16 h-16 object-cover rounded" />
                   <div>
                     <h3 className="text-lg font-semibold">{formData.name || "学校名称"}</h3>
                     <p className="text-sm text-muted-foreground">{formData.short_name || "学校简称"}</p>
@@ -412,7 +413,7 @@ const TenantManagementPage = () => {
                       {formData.logo ? (
                         <div className="flex items-center space-x-3 p-3 border border-border rounded-lg bg-muted/30">
                           <div className="relative">
-                            <img src={formData.logo} alt="Logo" className="h-14 w-auto max-w-24 object-contain rounded-md shadow-sm" />
+                            <img src={resolveAssetUrl(formData.logo)} alt="Logo" className="h-14 w-auto max-w-24 object-contain rounded-md shadow-sm" />
                             <Button 
                               variant="destructive" 
                               size="icon" 
@@ -439,7 +440,7 @@ const TenantManagementPage = () => {
                               if (file) {
                                 try {
                                   const result = await api.ossUploadFile(file, "tenants");
-                                  setFormData({ ...formData, logo: result.url });
+                                  setFormData({ ...formData, logo: result.path || result.url });
                                   toast.success("Logo上传成功");
                                 } catch (error) {
                                   console.error("Logo上传失败:", error);
@@ -468,7 +469,7 @@ const TenantManagementPage = () => {
                         <div className="flex items-center space-x-3 p-3 border border-border rounded-lg bg-muted/30">
                           <div className="relative">
                             <div className="h-14 bg-gray-800 rounded-md p-2 flex items-center justify-center">
-                              <img src={formData.logo_dark} alt="Logo Dark" className="h-10 w-auto max-w-20 object-contain" />
+                              <img src={resolveAssetUrl(formData.logo_dark)} alt="Logo Dark" className="h-10 w-auto max-w-20 object-contain" />
                             </div>
                             <Button 
                               variant="destructive" 
@@ -496,7 +497,7 @@ const TenantManagementPage = () => {
                               if (file) {
                                 try {
                                   const result = await api.ossUploadFile(file, "tenants");
-                                  setFormData({ ...formData, logo_dark: result.url });
+                                  setFormData({ ...formData, logo_dark: result.path || result.url });
                                   toast.success("深色Logo上传成功");
                                 } catch (error) {
                                   console.error("深色Logo上传失败:", error);

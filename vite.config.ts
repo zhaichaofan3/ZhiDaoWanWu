@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:4000";
   return {
   server: {
-    host: "::",
+    host: "0.0.0.0",
     port: 5173,
     allowedHosts: ["lurending.vicp.io"],
     proxy: {
