@@ -118,7 +118,6 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
     }
 
     const userData = {
-      email: "",
       name: nickname,
       nickname,
       avatar: avatar || "",

@@ -35,13 +35,13 @@ npm install
 
 ### 配置环境变量
 
-1) 复制示例文件并填写
+1. 复制示例文件并填写
 
 ```bash
 copy .env.example .env
 ```
 
-2) 生成本地随机密钥（推荐）
+1. 生成本地随机密钥（推荐）
 
 ```bash
 npm run gen:secrets
@@ -53,13 +53,13 @@ npm run gen:secrets
 
 本项目后端不会自动跑 migrations；推荐你在全新环境按下面顺序初始化：
 
-1) 执行建库建表（会创建并使用 `second_hand` 数据库；若你在 `.env` 里配置了其它库名，请自行调整脚本）
+1. 执行建库建表（会创建并使用 `second_hand` 数据库；若你在 `.env` 里配置了其它库名，请自行调整脚本）
 
 ```sql
 -- 运行：server/schema.init.sql
 ```
 
-2) （可选）导入开发种子数据
+1. （可选）导入开发种子数据
 
 ```sql
 -- 运行：server/schema.seed.sql
@@ -79,13 +79,13 @@ npm run dev:full
 仅启动后端：
 
 ```bash
-npm run server
+npm run dev:backend
 ```
 
 仅启动前端：
 
 ```bash
-npm run dev
+npm run dev:frontend
 ```
 
 ### 构建生产环境
@@ -98,7 +98,7 @@ npm run build
 
 构建产物会生成在 `dist/` 目录。
 
-2. 生产环境启动：
+1. 生产环境启动：
 
 ```bash
 npm start
@@ -124,20 +124,20 @@ git clone <repository-url>
 cd campus-second-hand-market
 ```
 
-2. **安装依赖**：
+1. **安装依赖**：
 
 ```bash
 npm install
 ```
 
-3. **配置环境变量**：
+1. **配置环境变量**：
 
 ```bash
 cp .env.example .env
 # 编辑 .env 文件，填写相关配置
 ```
 
-4. **生成本地随机密钥**：
+1. **生成本地随机密钥**：
 
 ```bash
 npm run gen:secrets
@@ -145,7 +145,7 @@ npm run gen:secrets
 
 将输出的 `TOKEN_SECRET` / `PASSWORD_SALT` 粘贴进 `.env` 文件。
 
-5. **初始化数据库**：
+1. **初始化数据库**：
 
 ```bash
 # 登录 MySQL
@@ -158,30 +158,28 @@ source server/schema.init.sql
 source server/schema.seed.sql
 ```
 
-6. **构建前端**：
+1. **构建前端**：
 
 ```bash
 npm run build
 ```
 
-7. **启动服务**：
-
+1. **启动服务**：
    - 直接启动：
    ```bash
    npm start
    ```
-
    - 使用 PM2 管理进程：
    ```bash
    # 安装 PM2
    npm install -g pm2
-   
+
    # 启动服务
    pm2 start npm --name "campus-market" -- start
-   
+
    # 查看状态
    pm2 status
-   
+
    # 设置开机自启
    pm2 save
    pm2 startup
@@ -226,7 +224,7 @@ server {
 docker build -t campus-second-hand-market .
 ```
 
-2. **运行容器**：
+1. **运行容器**：
 
 ```bash
 docker run -d \
@@ -251,16 +249,13 @@ docker run -d \
    - 检查 `.env` 中的数据库配置是否正确
    - 确保 MySQL 服务正在运行
    - 确保数据库用户有足够的权限
-
 2. **前端无法访问后端 API**：
    - 检查 `VITE_API_BASE_URL` 配置是否正确
    - 确保后端服务正在运行
    - 检查网络防火墙是否允许访问
-
 3. **图片上传失败**：
    - 检查 `uploads/` 目录是否存在且有写入权限
    - 若使用 OSS，检查 OSS 配置是否正确
-
 4. **短信验证码发送失败**：
    - 检查短信服务配置是否正确
    - 确保账户有足够的余额
@@ -272,3 +267,22 @@ docker run -d \
 - 定期更新依赖包以修复安全漏洞
 - 使用 HTTPS 协议保护数据传输
 
+### 项目特点
+
+- **前后端一体**：使用同一代码库管理前后端，便于开发和部署
+- **模块化设计**：清晰的目录结构和代码组织
+- **响应式布局**：适配不同设备屏幕
+- **丰富的功能**：从基础的商品发布到复杂的订单管理
+- **可扩展性**：支持 OSS 存储、短信服务、AI 功能等扩展能力
+- **安全性**：密码加密存储、JWT 认证、权限控制
+
+### 开发指南
+
+- **代码风格**：使用 ESLint 进行代码检查
+- **测试**：使用 Vitest 进行单元测试
+- **构建**：使用 Vite 进行前端构建
+- **部署**：支持多种部署方式，包括直接部署、PM2 管理和 Docker 容器化
+
+### 许可证
+
+MIT License
