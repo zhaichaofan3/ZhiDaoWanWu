@@ -125,8 +125,7 @@ const AdminLayout = () => {
       >
         <div className="h-14 flex items-center justify-center px-4 border-b border-border shrink-0">
           <Link to="/admin" className="flex w-full items-center justify-center" onClick={closeSidebarOnMobile}>
-            <img src="/logos/logo_dashboard_black.svg" alt="校园二手管理端" className="h-5 w-auto dark:hidden" loading="eager" decoding="async" />
-            <img src="/logos/logo_dashboard_white.svg" alt="校园二手管理端" className="h-5 w-auto hidden dark:block" loading="eager" decoding="async" />
+            <img src="/logos/logo.png" alt="校园二手管理端" className="h-20 w-auto" loading="eager" decoding="async" />
           </Link>
         </div>
 

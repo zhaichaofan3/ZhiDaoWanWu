@@ -25,7 +25,7 @@ export function buildSmtpService() {
       const mailOptions = {
         from: `${process.env.EMAIL_FROM_NAME} <${process.env.EMAIL_FROM}>`,
         to: email,
-        subject: '邮箱验证码 - 拾物社',
+        subject: '邮箱验证码 - 智达万物',
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h2 style="color: #333;">邮箱验证</h2>
@@ -36,7 +36,7 @@ export function buildSmtpService() {
             </div>
             <p>验证码有效期为 ${Math.floor(expiresIn / 60)} 分钟，请尽快使用。</p>
             <p>如非本人操作，请忽略此邮件。</p>
-            <p style="margin-top: 30px; color: #666; font-size: 12px;">--<br>拾物社</p>
+            <p style="margin-top: 30px; color: #666; font-size: 12px;">--<br>智达万物</p>
           </div>
         `,
       };

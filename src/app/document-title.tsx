@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 
-const SITE_NAME = "拾物社";
+const SITE_NAME = "智达万物";
 
 type TitleRule = {
   path: string;

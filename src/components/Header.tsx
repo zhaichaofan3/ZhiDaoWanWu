@@ -98,20 +98,7 @@ const Header = () => {
       <div className="container flex h-14 items-center gap-4">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2 shrink-0">
-          {tenant?.logo ? (
-            <img
-              src={resolveAssetUrl(resolvedTheme === "dark" && tenant.logo_dark ? tenant.logo_dark : tenant.logo)}
-              alt={tenant.name}
-              className="h-6 w-auto"
-              loading="eager"
-              decoding="async"
-            />
-          ) : (
-            <>
-              <img src="/logos/logo_black.svg" alt="校园二手" className="h-6 w-auto dark:hidden" loading="eager" decoding="async" />
-              <img src="/logos/logo_white.svg" alt="校园二手" className="h-6 w-auto hidden dark:block" loading="eager" decoding="async" />
-            </>
-          )}
+          <img src="/logos/logo.png" alt="校园二手" className="h-20 w-auto" loading="eager" decoding="async" />
           <span className="sr-only">{tenant?.name || "校园二手"}</span>
         </Link>
 

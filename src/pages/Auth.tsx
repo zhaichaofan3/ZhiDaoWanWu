@@ -142,16 +142,9 @@ const Auth = () => {
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
           <img
-            src="/logos/logo_with_slogan_black.svg"
+            src="/logos/logo.png"
             alt="校园二手交易平台"
-            className="mx-auto h-16 w-auto mb-3 dark:hidden"
-            loading="eager"
-            decoding="async"
-          />
-          <img
-            src="/logos/logo_with_slogan_white.svg"
-            alt="校园二手交易平台"
-            className="mx-auto h-16 w-auto mb-3 hidden dark:block"
+            className="mx-auto h-40 w-auto mb-3"
             loading="eager"
             decoding="async"
           />
