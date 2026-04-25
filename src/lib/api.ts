@@ -957,8 +957,6 @@ export const api = {
 
   // Tenant APIs
   getTenants: () => request<{ list: any[] }>('/api/tenants'),
-  getTenantById: (id: number) => request<any>(`/api/tenants/${id}`),
-
 
   // Super Admin: Tenant Management
   adminListTenants: (params?: { status?: string; keyword?: string; page?: number; limit?: number }) => {
