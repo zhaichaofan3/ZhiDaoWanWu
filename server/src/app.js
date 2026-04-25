@@ -114,26 +114,29 @@ function createToken(payload) {
 }
 
 function verifyToken(token) {
-  const parts = String(token || "").split(".");
-  if (parts.length !== 2) return null;
-  const [tokenBody, sig] = parts;
-  const expectedSig = crypto
-    .createHmac("sha256", TOKEN_SECRET)
-    .update(tokenBody)
-    .digest("base64")
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-  if (sig !== expectedSig) return null;
+    const parts = String(token || "").split(".");
+    if (parts.length !== 2) return null;
+    const [tokenBody, sig] = parts;
+    const expectedSig = crypto
+      .createHmac("sha256", TOKEN_SECRET)
+      .update(tokenBody)
+      .digest("base64")
+      .replace(/=/g, "")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
+    if (sig !== expectedSig) return null;
 
-  try {
-    const payload = JSON.parse(base64UrlDecode(tokenBody));
-    if (!payload?.exp || payload.exp < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
+    try {
+      const payload = JSON.parse(base64UrlDecode(tokenBody));
+      if (!payload?.exp) return null;
+      // 检查令牌是否过期，允许一定的时间误差（5分钟）
+      if (payload.exp < Date.now() - 5 * 60 * 1000) return null;
+      return payload;
+    } catch (error) {
+      console.error("令牌解析失败:", error);
+      return null;
+    }
   }
-}
 
 function hashPasswordMD5(password) {
   if (!PASSWORD_SALT) {

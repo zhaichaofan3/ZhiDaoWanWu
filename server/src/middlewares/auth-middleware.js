@@ -31,10 +31,6 @@ export function buildAuthMiddleware({ db, verifyToken, permissionService }) {
 
   function adminRequired(req, res, next) {
     authRequired(req, res, async () => {
-      if (req.auth.role !== "admin" && req.auth.role !== "user") {
-        return res.status(403).json({ message: "需要管理员权限" });
-      }
-
       const isSuperAdmin = await permissionService.isSuperAdmin(req.auth.uid);
       if (isSuperAdmin) {
         req.auth.isSuperAdmin = true;

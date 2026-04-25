@@ -1,7 +1,7 @@
 const TOKEN_KEY = "secondhand_token";
 const ME_KEY = "secondhand_me";
 
-export type AuthRole = "user" | "admin";
+export type AuthRole = "user" | "admin" | "verified_user";
 
 export type Me = {
   id: number;

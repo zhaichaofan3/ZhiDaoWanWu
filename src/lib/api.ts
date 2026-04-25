@@ -29,7 +29,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    if (res.status === 401 || res.status === 403) {
+    // 只有当明确是令牌无效或过期时才清除认证信息
+    if (res.status === 401 && message.includes("未登录或 token 无效")) {
       clearAuth();
     }
     throw new Error(message);
@@ -957,6 +958,7 @@ export const api = {
   // Tenant APIs
   getTenants: () => request<{ list: any[] }>('/api/tenants'),
   getTenantById: (id: number) => request<any>(`/api/tenants/${id}`),
+
 
   // Super Admin: Tenant Management
   adminListTenants: (params?: { status?: string; keyword?: string; page?: number; limit?: number }) => {

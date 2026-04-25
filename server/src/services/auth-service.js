@@ -21,14 +21,31 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
     if (!user) return { status: 404, body: { message: "该手机号未注册" } };
     if (user.status === "banned") return { status: 403, body: { message: "账号已封禁" } };
 
-    const token = createToken({ uid: user.id, role: user.role });
+    // 基于实际角色分配确定用户角色
+    let userRole = user.role;
+    try {
+      const roles = await db.query(
+        `SELECT r.code FROM user_roles ur JOIN roles r ON ur.role_id = r.id 
+         WHERE ur.user_id = ? AND r.status = 'active' 
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         ORDER BY FIELD(r.code, 'super_admin', 'tenant_admin', 'admin', 'verified_user', 'user') LIMIT 1`,
+        [user.id]
+      );
+      if (roles.length > 0) {
+        userRole = roles[0].code;
+      }
+    } catch (error) {
+      console.error("获取用户角色失败:", error);
+    }
+
+    const token = createToken({ uid: user.id, role: userRole });
     return {
       status: 200,
       body: {
         user: {
           id: user.id,
           nickname: user.nickname,
-          role: user.role,
+          role: userRole,
           tenantId: user.tenant_id,
           hasStudentId: !!user.student_id && user.student_id.length > 0,
         },
@@ -76,14 +93,31 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
       await db.update("users", user.id, { password_hash: await hashPassword(password) });
     }
 
-    const token = createToken({ uid: user.id, role: user.role });
+    // 基于实际角色分配确定用户角色
+    let userRole = user.role;
+    try {
+      const roles = await db.query(
+        `SELECT r.code FROM user_roles ur JOIN roles r ON ur.role_id = r.id 
+         WHERE ur.user_id = ? AND r.status = 'active' 
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         ORDER BY FIELD(r.code, 'super_admin', 'tenant_admin', 'admin', 'verified_user', 'user') LIMIT 1`,
+        [user.id]
+      );
+      if (roles.length > 0) {
+        userRole = roles[0].code;
+      }
+    } catch (error) {
+      console.error("获取用户角色失败:", error);
+    }
+
+    const token = createToken({ uid: user.id, role: userRole });
     return {
       status: 200,
       body: {
         user: {
           id: user.id,
           nickname: user.nickname,
-          role: user.role,
+          role: userRole,
           tenantId: user.tenant_id,
           hasStudentId: !!user.student_id && user.student_id.length > 0,
         },
@@ -181,6 +215,23 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
       tenantName = tenant?.name || null;
     }
 
+    // 基于实际角色分配确定用户角色
+    let userRole = user.role;
+    try {
+      const roles = await db.query(
+        `SELECT r.code FROM user_roles ur JOIN roles r ON ur.role_id = r.id 
+         WHERE ur.user_id = ? AND r.status = 'active' 
+         AND (ur.expires_at IS NULL OR ur.expires_at > NOW())
+         ORDER BY FIELD(r.code, 'super_admin', 'tenant_admin', 'admin', 'verified_user', 'user') LIMIT 1`,
+        [user.id]
+      );
+      if (roles.length > 0) {
+        userRole = roles[0].code;
+      }
+    } catch (error) {
+      console.error("获取用户角色失败:", error);
+    }
+
     return {
       user: {
         id: user.id,
@@ -189,7 +240,7 @@ export function buildAuthService({ db, createToken, hashPassword, verifyPassword
         phone: user.phone,
         gender: user.gender,
         bio: user.bio,
-        role: user.role,
+        role: userRole,
         tenantId: user.tenant_id,
         tenantName,
         studentId: user.student_id || "",
